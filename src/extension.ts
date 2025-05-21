@@ -1,26 +1,64 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "llm-committer" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('llm-committer.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from LLM-Committer!');
-	});
-
-	context.subscriptions.push(disposable);
+  const command = 'llm-committer.openWebview';
+  
+  const commandHandler = () => {
+    // Create and show panel
+    const panel = vscode.window.createWebviewPanel(
+      'reactWebview',
+      'React Webview',
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        localResourceRoots: [
+          vscode.Uri.file(path.join(context.extensionPath, 'dist'))
+        ]
+      }
+    );
+    
+    // Get path to webview bundle
+    const webviewPath = path.join(context.extensionPath, 'dist', 'webview');
+    const indexPath = path.join(webviewPath, 'index.html');
+    
+    // Load HTML content
+    let indexHtml = fs.readFileSync(indexPath, 'utf8');
+    
+    // Fix paths for assets
+    const webviewUri = panel.webview.asWebviewUri(
+      vscode.Uri.file(webviewPath)
+    );
+    indexHtml = indexHtml.replace(
+      /(href|src)="(.+)"/g,
+      (match, attr, value) => {
+        if (value.startsWith('/')) {
+          return `${attr}="${webviewUri.toString()}${value}"`;
+        }
+        return match;
+      }
+    );
+    
+    panel.webview.html = indexHtml;
+    
+    // Handle messages from webview
+    panel.webview.onDidReceiveMessage(
+      message => {
+        switch (message.command) {
+          case 'alert':
+            vscode.window.showInformationMessage(message.text);
+            return;
+        }
+      },
+      undefined,
+      context.subscriptions
+    );
+  };
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand(command, commandHandler)
+  );
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}

@@ -3,6 +3,7 @@
   "displayName": "LLM-Committer",
   "description": "VSCode extention for generating commit messages using an LLM",
   "version": "0.0.1",
+  "type": "module",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -11,25 +12,26 @@
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "vite build && tsc -p tsconfig.json",
+    "dev": "vite build --watch",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
   "contributes": {
     "commands": [
       {
-        "command": "llm-committer.helloWorld",
-        "title": "Hello World"
+        "command": "llm-committer.openWebview",
+        "title": "Open React Webview"
       }
     ]
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
     "@types/vscode": "^1.100.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
