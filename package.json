@@ -14,8 +14,10 @@
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "vite build && tsc -p tsconfig.json",
-    "dev": "vite build --watch",
+    "build": "npm run build:webview && npm run build:extension",
+    "build:webview": "vite build",
+    "build:extension": "tsc -p tsconfig.json",
+    "dev": "concurrently \"vite build --watch\" \"tsc -watch -p ./\"",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
@@ -38,6 +40,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "concurrently": "^9.1.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
