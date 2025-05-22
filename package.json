@@ -3,13 +3,14 @@
   "displayName": "LLM-Committer",
   "description": "VSCode extention for generating commit messages using an LLM",
   "version": "0.0.1",
+  "publisher": "theo-dev",
   "engines": {
     "vscode": "^1.89.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["onCommand:llm-committer.openWebview"],
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
