@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 export function activate(context: vscode.ExtensionContext) {
+  console.log('Extension "llm-committer" is now active!');	
   const command = 'llm-committer.openWebview';
   
   const commandHandler = () => {
