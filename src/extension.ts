@@ -1,13 +1,13 @@
 // src/extension.ts
 import * as vscode from 'vscode';
-import * as path from 'path'; // Make sure path is imported if you use it
+// path is not used in this snippet, but good to keep if you plan to use it.
+// import * as path from 'path';
 import * as fs from 'fs';
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Extension "llm-committer" is now active!'); // This will run when the command is first invoked.
+  console.log('Extension "llm-committer" is now active!');
   const commandId = 'llm-committer.openWebview';
 
-  // Define the handler function for your command
   const commandHandler = () => {
     const extensionUri = context.extensionUri;
 
@@ -17,24 +17,48 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.ViewColumn.One,
       {
         enableScripts: true,
-        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist')]
+        // Ensure localResourceRoots allows access to the 'dist/webview/assets' directory if your assets are there
+        // Or more broadly 'dist/webview' which you already have.
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'webview')]
       }
     );
 
     const webviewBuildDiskPath = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
     const indexPathOnDisk = vscode.Uri.joinPath(webviewBuildDiskPath, 'index.html');
-    let indexHtml = fs.readFileSync(indexPathOnDisk.fsPath, 'utf8');
 
-    indexHtml = indexHtml.replace(/(href|src)="\.(.+?)"/g, (match, attr, relativePath) => {
-      const assetDiskPath = vscode.Uri.joinPath(webviewBuildDiskPath, relativePath);
-      const assetWebviewUri = panel.webview.asWebviewUri(assetDiskPath);
-      return `${attr}="${assetWebviewUri}"`;
-    });
+    try {
+      let indexHtml = fs.readFileSync(indexPathOnDisk.fsPath, 'utf8');
+      console.log('[LLM-Committer] Original index.html loaded.');
 
-    panel.webview.html = indexHtml;
+      // Replace CSP source placeholder first
+      indexHtml = indexHtml.replace(/\${webview.cspSource}/g, panel.webview.cspSource);
+      console.log('[LLM-Committer] CSP source replaced.');
+
+      // Regex to match paths like "/assets/filename.ext"
+      indexHtml = indexHtml.replace(/(href|src)="(\/assets\/[^"]+)"/g, (match, attr, assetPathWithSlash) => {
+          const relativePath = assetPathWithSlash.substring(1); // e.g., "assets/main.js"
+          const assetDiskPath = vscode.Uri.joinPath(webviewBuildDiskPath, relativePath);
+          const assetWebviewUri = panel.webview.asWebviewUri(assetDiskPath);
+          console.log(`[LLM-Committer] Rewriting ${attr}: ${assetPathWithSlash} -> ${assetWebviewUri.toString()}`);
+          return `${attr}="${assetWebviewUri.toString()}"`;
+      });
+      // Log the HTML after replacement to verify paths
+      // console.log('[LLM-Committer] HTML after path replacement:', indexHtml);
+
+      panel.webview.html = indexHtml;
+      console.log('[LLM-Committer] Webview HTML set.');
+
+    } catch (e) {
+      console.error('[LLM-Committer] Error loading or processing webview HTML:', e);
+      vscode.window.showErrorMessage('Failed to load LLM Committer webview: ' + (e as Error).message);
+      panel.webview.html = `<h1>Error loading webview</h1><p>${(e as Error).message}</p>`;
+      return;
+    }
+
 
     panel.webview.onDidReceiveMessage(
       message => {
+        console.log('[LLM-Committer] Message received from webview:', message);
         switch (message.command) {
           case 'alert':
             vscode.window.showInformationMessage(message.text);
@@ -44,12 +68,11 @@ export function activate(context: vscode.ExtensionContext) {
       undefined,
       context.subscriptions
     );
-  }; // <--- commandHandler function definition ends here
+  };
 
-  // Register the command. This line should be directly in activate.
   context.subscriptions.push(
     vscode.commands.registerCommand(commandId, commandHandler)
   );
-} // <--- activate function ends here
+}
 
 export function deactivate() {}

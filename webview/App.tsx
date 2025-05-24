@@ -1,17 +1,19 @@
+// webview/App.tsx
 import React, { useState } from 'react';
+
+// Acquire VS Code API once at the module level
+const vscode = (window as any).acquireVsCodeApi();
 
 const App: React.FC = () => {
   const [count, setCount] = useState(0);
-  
-  // Acquire VS Code API
-  const vscode = acquireVsCodeApi();
-  
+
   const handleClick = () => {
     setCount(prevCount => prevCount + 1);
     // Send message to extension
+    // Now 'vscode' is the stable instance acquired once
     vscode.postMessage({
       command: 'alert',
-      text: `Count is now ${count + 1}`
+      text: `Count is now ${count + 1}` // Use current count for the message
     });
   };
 
@@ -25,9 +27,5 @@ const App: React.FC = () => {
   );
 };
 
-// Helper function to get the VS Code API
-function acquireVsCodeApi() {
-  return (window as any).acquireVsCodeApi();
-}
 
 export default App;
