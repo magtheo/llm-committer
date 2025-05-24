@@ -1,0 +1,82 @@
+/* webview/App.css */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 10px;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+  }
+  
+  .app-container {
+    padding: 15px;
+  }
+  
+  h1, h2 {
+    color: var(--vscode-textLink-foreground);
+  }
+  
+  button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    padding: 6px 12px;
+    margin: 4px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  
+  button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+  }
+  
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  hr {
+    border: none;
+    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-editorGroup-border));
+    margin: 15px 0;
+  }
+  
+  .changes-section {
+    margin-top: 20px;
+  }
+  
+  .file-list {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  .file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-editorGroup-border));
+  }
+  
+  .file-item:last-child {
+    border-bottom: none;
+  }
+  
+  .file-name {
+    flex-grow: 1;
+    margin-right: 10px;
+    word-break: break-all;
+  }
+  
+  .file-actions button {
+    margin-left: 8px;
+    padding: 4px 8px;
+    font-size: 0.9em;
+  }
+  
+  .revert-button {
+    background-color: var(--vscode-button-secondaryBackground, var(--vscode-errorForeground));
+    color: var(--vscode-button-secondaryForeground, #fff);
+  }
+  .revert-button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground, darkred);
+  }
