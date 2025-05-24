@@ -10,7 +10,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": ["onCommand:llm-committer.openWebview"],
+  "activationEvents": ["onView:llmCommitterView"],
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
@@ -22,12 +22,41 @@
     "watch": "tsc -watch -p ./"
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "llm-committer",
+          "title": "LLM Committer",
+          "icon": "$(robot)"
+        }
+      ]
+    },
+    "views": {
+      "llm-committer": [
+        {
+          "type": "webview",
+          "id": "llmCommitterView",
+          "name": "Git Changes",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "llm-committer.openWebview",
-        "title": "Open React Webview"
+        "command": "llm-committer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "llm-committer.refresh",
+          "when": "view == llmCommitterView",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
