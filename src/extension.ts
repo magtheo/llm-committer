@@ -1,4 +1,4 @@
-// src/extension.ts
+// src/extension.ts - Phase 3: Basic Grouping & Navigation
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -37,6 +37,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                 case 'alert':
                     vscode.window.showInformationMessage(message.text);
                     return;
+                    
                 case 'uiReady':
                     console.log('[LLM-Committer] Webview reported "uiReady".');
                     await updateChangedFilesAndNotifyState(this._view);
@@ -48,10 +49,12 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         });
                     }
                     return;
+                    
                 case 'fetchChanges':
                     console.log('[LLM-Committer] Webview requested "fetchChanges".');
                     await updateChangedFilesAndNotifyState(this._view);
                     return;
+                    
                 case 'viewFileDiff':
                     if (payload && payload.filePath) {
                         console.log(`[LLM-Committer] Webview requested "viewFileDiff" for: ${payload.filePath}`);
@@ -73,6 +76,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         console.error('[LLM-Committer] "viewFileDiff" command received without filePath.');
                     }
                     return;
+                    
                 case 'revertFileChanges':
                     if (payload && payload.filePath) {
                         console.log(`[LLM-Committer] Webview requested "revertFileChanges" for: ${payload.filePath}`);
@@ -95,6 +99,48 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         }
                     } else {
                         console.error('[LLM-Committer] "revertFileChanges" command received without filePath.');
+                    }
+                    return;
+
+                // Phase 3: New message handlers for grouping functionality
+                case 'toggleFileSelection':
+                    if (payload && payload.filePath) {
+                        console.log(`[LLM-Committer] Toggling selection for: ${payload.filePath}`);
+                        stateService.toggleFileSelection(payload.filePath);
+                    }
+                    return;
+
+                case 'createGroup':
+                    if (payload && payload.selectedFiles && payload.selectedFiles.length > 0) {
+                        console.log(`[LLM-Committer] Creating group with files:`, payload.selectedFiles);
+                        stateService.startNewGroup(payload.selectedFiles);
+                    } else {
+                        vscode.window.showWarningMessage('No files selected for grouping.');
+                    }
+                    return;
+
+                case 'navigateToView':
+                    if (payload && payload.view) {
+                        console.log(`[LLM-Committer] Navigating to view: ${payload.view}`);
+                        if (payload.view === 'fileselection') {
+                            stateService.clearCurrentGroup();
+                        } else {
+                            stateService.setCurrentView(payload.view);
+                        }
+                    }
+                    return;
+
+                case 'updateGroupSpecificContext':
+                    if (payload && typeof payload.context === 'string') {
+                        console.log(`[LLM-Committer] Updating group specific context`);
+                        stateService.updateCurrentGroupSpecificContext(payload.context);
+                    }
+                    return;
+
+                case 'updateGroupCommitMessage':
+                    if (payload && typeof payload.message === 'string') {
+                        console.log(`[LLM-Committer] Updating group commit message`);
+                        stateService.updateCurrentGroupCommitMessage(payload.message);
                     }
                     return;
             }
