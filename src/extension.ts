@@ -1,4 +1,4 @@
-// src/extension.ts - Phase 4: General Context & Persistence
+// src/extension.ts - Phase 5+6: Complete LLM Integration
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -6,10 +6,12 @@ import * as path from 'path';
 import { GitService } from './services/GitService';
 import { StateService, AppState } from './services/StateService';
 import { ConfigurationService } from './services/ConfigurationService';
+import { LLMService } from './services/LLMService';
 
 let gitService: GitService;
 let stateService: StateService;
 let configService: ConfigurationService;
+let llmService: LLMService;
 
 class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'llmCommitterView';
@@ -153,16 +155,146 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         }
                     }
                     return;
+
+                // Phase 5+6: Settings handling
+                case 'saveApiKey':
+                    if (payload && typeof payload.apiKey === 'string') {
+                        console.log(`[LLM-Committer] Saving API key`);
+                        try {
+                            await configService.setApiKey(payload.apiKey);
+                            await this.updateSettingsState();
+                            vscode.window.showInformationMessage('API key saved successfully');
+                        } catch (error) {
+                            console.error(`[LLM-Committer] Failed to save API key:`, error);
+                            vscode.window.showErrorMessage(`Failed to save API key: ${(error as Error).message}`);
+                        }
+                    }
+                    return;
+
+                case 'saveLlmInstructions':
+                    if (payload && typeof payload.instructions === 'string') {
+                        console.log(`[LLM-Committer] Saving LLM instructions`);
+                        try {
+                            await configService.setLlmInstructions(payload.instructions);
+                            
+                            // If provider is sent, make sure to preserve it
+                            if (payload.provider) {
+                                console.log(`[LLM-Committer] Preserving provider: ${payload.provider}`);
+                                await configService.setLlmProvider(payload.provider);
+                            }
+                            
+                            await this.updateSettingsState();
+                            vscode.window.showInformationMessage('LLM instructions saved successfully');
+                        } catch (error) {
+                            console.error(`[LLM-Committer] Failed to save LLM instructions:`, error);
+                            vscode.window.showErrorMessage(`Failed to save LLM instructions: ${(error as Error).message}`);
+                        }
+                    }
+                    return;
+
+                case 'saveLlmSettings':
+                    if (payload) {
+                        console.log(`[LLM-Committer] Saving LLM settings`);
+                        try {
+                            if (payload.provider) await configService.setLlmProvider(payload.provider);
+                            if (payload.model) await configService.setLlmModel(payload.model);
+                            if (payload.maxTokens) await configService.setMaxTokens(payload.maxTokens);
+                            if (payload.temperature !== undefined) await configService.setTemperature(payload.temperature);
+                            
+                            await this.updateSettingsState();
+                            vscode.window.showInformationMessage('Settings saved successfully');
+                        } catch (error) {
+                            console.error(`[LLM-Committer] Failed to save settings:`, error);
+                            vscode.window.showErrorMessage(`Failed to save settings: ${(error as Error).message}`);
+                        }
+                    }
+                    return;
+
+                case 'testApiConnection':
+                    console.log(`[LLM-Committer] Testing API connection`);
+                    try {
+                        const result = await llmService.testConnection();
+                        if (result.success) {
+                            vscode.window.showInformationMessage('✅ API connection successful!');
+                        } else {
+                            vscode.window.showErrorMessage(`❌ API connection failed: ${result.error}`);
+                        }
+                    } catch (error) {
+                        console.error(`[LLM-Committer] API connection test error:`, error);
+                        vscode.window.showErrorMessage(`❌ API connection test failed: ${(error as Error).message}`);
+                    }
+                    return;
+
+                // Phase 5+6: Generate commit message
+                case 'generateCommitMessage':
+                    if (payload && payload.files) {
+                        console.log(`[LLM-Committer] Generating commit message for files:`, payload.files);
+                        await this.handleGenerateCommitMessage(payload.files, payload.generalContext, payload.groupContext);
+                    }
+                    return;
             }
         });
     }
 
-    // Phase 4: Initialize UI state with persisted data
+    // Phase 5+6: Handle commit message generation
+    private async handleGenerateCommitMessage(files: string[], generalContext: string, groupContext: string): Promise<void> {
+        try {
+            // Set generating state
+            stateService.setGeneratingMessage(true);
+
+            // Get file diffs
+            console.log('[LLM-Committer] Retrieving file diffs...');
+            const fileDiffs = await gitService.getFileDiffs(files);
+
+            // Generate commit message
+            console.log('[LLM-Committer] Calling LLM service...');
+            const result = await llmService.generateCommitMessage({
+                generalContext,
+                groupContext,
+                fileDiffs
+            });
+
+            if (result.success && result.message) {
+                // Update the commit message in state
+                stateService.updateCurrentGroupCommitMessage(result.message);
+                
+                // Show success message
+                let successMsg = '✅ Commit message generated successfully!';
+                if (result.truncated) {
+                    successMsg += ' (Note: Some content was truncated due to length limits)';
+                }
+                if (result.tokensUsed) {
+                    successMsg += ` (${result.tokensUsed} tokens used)`;
+                }
+                
+                vscode.window.showInformationMessage(successMsg);
+                console.log('[LLM-Committer] Generated message:', result.message);
+                
+            } else {
+                // Show error message
+                const errorMsg = result.error || 'Unknown error occurred';
+                vscode.window.showErrorMessage(`❌ Failed to generate commit message: ${errorMsg}`);
+                console.error('[LLM-Committer] Generation failed:', result.error);
+            }
+
+        } catch (error) {
+            console.error('[LLM-Committer] Error in generateCommitMessage:', error);
+            vscode.window.showErrorMessage(`❌ Error generating commit message: ${(error as Error).message}`);
+        } finally {
+            // Clear generating state
+            stateService.setGeneratingMessage(false);
+        }
+    }
+
+    // Initialize UI state with persisted data and settings
     private async initializeUIState(): Promise<void> {
         try {
             // Load persisted general context
             const generalContext = await configService.getGeneralContext();
             stateService.setGeneralContext(generalContext);
+            
+            // Update settings state
+            await this.updateSettingsState();
             
             // Update changed files
             await updateChangedFilesAndNotifyState(this._view);
@@ -183,6 +315,25 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     payload: stateService.state
                 });
             }
+        }
+    }
+
+    // Update settings state from configuration
+    private async updateSettingsState(): Promise<void> {
+        try {
+            const hasApiKey = !!(await configService.getApiKey());
+            const settings = {
+                hasApiKey,
+                provider: configService.getLlmProvider(),
+                model: configService.getLlmModel(),
+                maxTokens: configService.getMaxTokens(),
+                temperature: configService.getTemperature(),
+                instructionsLength: configService.getLlmInstructions().length
+            };
+            
+            stateService.updateSettings(settings);
+        } catch (error) {
+            console.error('[LLM-Committer] Error updating settings state:', error);
         }
     }
 
@@ -244,7 +395,8 @@ export function activate(context: vscode.ExtensionContext) {
     
     gitService = new GitService();
     stateService = new StateService();
-    configService = new ConfigurationService(context); // Phase 4: Initialize config service
+    configService = new ConfigurationService(context);
+    llmService = new LLMService(configService); // Phase 5+6: Initialize LLM service
 
     const provider = new LLMCommitterViewProvider(context.extensionUri);
     
@@ -266,6 +418,13 @@ export function activate(context: vscode.ExtensionContext) {
         provider.refresh();
     });
     context.subscriptions.push(refreshCommand);
+
+    // Register settings command
+    const settingsCommand = vscode.commands.registerCommand('llm-committer.settings', () => {
+        // Navigate to settings view via state service
+        stateService.setCurrentView('settings');
+    });
+    context.subscriptions.push(settingsCommand);
 }
 
 export function deactivate() {
