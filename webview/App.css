@@ -1,4 +1,4 @@
-/* webview/App.css - VS Code Source Control Matching Styles */
+/* webview/App.css - Phase 3: VS Code Source Control Matching Styles + Grouping */
 
 body {
   font-family: var(--vscode-font-family);
@@ -25,6 +25,15 @@ h1, h2 {
   padding: 6px 20px 6px 20px;
   margin: 0;
   border: none;
+}
+
+h3 {
+  color: var(--vscode-sideBarSectionHeader-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 8px 0;
 }
 
 /* Match SCM file list styling exactly */
@@ -67,6 +76,11 @@ h1, h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vscode-foreground);
+}
+
+/* Adjust file name padding when checkbox is present */
+.file-item input[type="checkbox"] + .file-name {
+  padding-left: 4px;
 }
 
 /* Action buttons match VS Code toolbar buttons */
@@ -173,6 +187,28 @@ input, textarea {
   }
 }
 
+/* Checkbox styling to match VS Code */
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--vscode-checkbox-border);
+  background-color: var(--vscode-checkbox-background);
+  border-radius: 2px;
+  cursor: pointer;
+  
+  &:checked {
+    background-color: var(--vscode-checkbox-selectBackground);
+    border-color: var(--vscode-checkbox-selectBorder);
+  }
+  
+  &:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+  }
+}
+
 /* Loading states */
 .loading-indicator {
   color: var(--vscode-progressBar-background);
@@ -195,6 +231,30 @@ input, textarea {
   color: var(--vscode-descriptionForeground);
   font-size: 13px;
   font-style: italic;
+}
+
+/* Group view specific styling */
+.group-content {
+  padding: 12px;
+}
+
+.group-section {
+  margin-bottom: 16px;
+}
+
+.group-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Labels for form elements */
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-sideBarSectionHeader-foreground);
+  margin: 0 0 8px 0;
+  letter-spacing: 0.05em;
 }
 
 /* Dividers/separators */
@@ -225,4 +285,38 @@ hr {
 
 ::-webkit-scrollbar-thumb:active {
   background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* Selection highlight for selected files */
+.file-item.selected {
+  background-color: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--vscode-list-inactiveSelectionForeground);
+}
+
+.file-item.selected:hover {
+  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* Button group styling */
+.button-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 300px) {
+  .file-name {
+    padding-left: 8px;
+  }
+  
+  .file-actions {
+    padding-right: 4px;
+  }
+  
+  .button-group {
+    flex-direction: column;
+    gap: 4px;
+  }
 }
