@@ -1,7 +1,7 @@
 {
   "name": "llm-committer",
   "displayName": "LLM-Committer",
-  "description": "VSCode extention for generating commit messages using an LLM",
+  "description": "VSCode extension for generating commit messages using an LLM",
   "version": "0.0.1",
   "publisher": "theo-dev",
   "engines": {
@@ -46,6 +46,11 @@
         "command": "llm-committer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "llm-committer.settings",
+        "title": "Settings",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -54,8 +59,55 @@
           "command": "llm-committer.refresh",
           "when": "view == llmCommitterView",
           "group": "navigation"
+        },
+        {
+          "command": "llm-committer.settings",
+          "when": "view == llmCommitterView",
+          "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "LLM Committer",
+      "properties": {
+        "llmCommitter.llmProvider": {
+          "type": "string",
+          "default": "openai",
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "enumDescriptions": [
+            "OpenAI (GPT models)",
+            "Anthropic (Claude models)"
+          ],
+          "description": "AI provider to use for generating commit messages."
+        },
+        "llmCommitter.llmInstructions": {
+          "type": "string",
+          "default": "",
+          "description": "Custom instructions for the LLM when generating commit messages. Leave empty to use default instructions."
+        },
+        "llmCommitter.llmModel": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model to use for generating commit messages. Available models depend on the selected provider."
+        },
+        "llmCommitter.maxTokens": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 1000,
+          "maximum": 8000,
+          "description": "Maximum number of tokens to use for the entire LLM request."
+        },
+        "llmCommitter.temperature": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Temperature setting for LLM creativity (0 = consistent, 1 = creative)."
+        }
+      }
     }
   },
   "devDependencies": {
