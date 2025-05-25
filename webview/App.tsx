@@ -1,17 +1,15 @@
-// webview/App.tsx
+// webview/App.tsx - Updated with VS Code SCM styling
 import React, { useState, useEffect } from 'react';
-import './App.css'; // Optional: Create an App.css for basic styling
+import './App.css';
 
-// Acquire VS Code API once at the module level
 const vscode = (window as any).acquireVsCodeApi();
 
 interface AppState {
     changedFiles: string[];
-    // you can add other state parts here later, like generalContext, etc.
 }
 
 const App: React.FC = () => {
-  const [count, setCount] = useState(0); // Example state, can be removed if not needed
+  const [count, setCount] = useState(0);
   const [appState, setAppState] = useState<AppState>({ changedFiles: [] });
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
@@ -22,13 +20,12 @@ const App: React.FC = () => {
         case 'stateUpdate':
           console.log('[Webview App] Received stateUpdate:', message.payload);
           setAppState(message.payload);
-          setIsLoadingFiles(false); // Assume loading finishes when state updates
+          setIsLoadingFiles(false);
           break;
       }
     };
     window.addEventListener('message', messageListener);
 
-    // Signal extension that webview is ready and request initial data
     setIsLoadingFiles(true);
     vscode.postMessage({ command: 'uiReady' });
 
@@ -61,7 +58,6 @@ const App: React.FC = () => {
 
   const handleRevertFile = (filePath: string) => {
     console.log(`[Webview App] Requesting revertFileChanges for: ${filePath}`);
-    // No need to setIsLoadingFiles(true) here, as the list will refresh after revert
     vscode.postMessage({
       command: 'revertFileChanges',
       payload: { filePath: filePath }
@@ -70,31 +66,61 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <h1>LLM Committer</h1>
-      <p>
-        <button onClick={handleClick}>Test Alert Count: {count}</button>
-      </p>
-      <hr />
-      <div className="changes-section">
-        <h2>Changed Files:</h2>
-        <button onClick={handleRefreshChanges} disabled={isLoadingFiles}>
-          {isLoadingFiles ? 'Loading...' : 'Refresh Files'}
+      {/* Test section - can be removed in production */}
+      <div style={{ padding: '8px 20px', borderBottom: '1px solid var(--vscode-sideBar-border)' }}>
+        <button className="secondary-button" onClick={handleClick}>
+          Test Alert Count: {count}
         </button>
-        {isLoadingFiles && appState.changedFiles.length === 0 && <p>Loading changes...</p>}
-        {!isLoadingFiles && appState.changedFiles.length === 0 && (
-          <p>No changes detected in the current workspace.</p>
+      </div>
+
+      {/* Main changes section matching SCM layout */}
+      <div className="changes-section">
+        {/* Section header matching SCM style */}
+        <h2>Changes</h2>
+        
+        {/* Toolbar area matching SCM */}
+        <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button 
+            className="secondary-button" 
+            onClick={handleRefreshChanges} 
+            disabled={isLoadingFiles}
+            style={{ fontSize: '11px', padding: '2px 6px' }}
+          >
+            {isLoadingFiles ? '⟳' : '↻'} Refresh
+          </button>
+        </div>
+
+        {/* Loading state */}
+        {isLoadingFiles && appState.changedFiles.length === 0 && (
+          <div className="loading-indicator">Loading changes...</div>
         )}
+
+        {/* No changes message */}
+        {!isLoadingFiles && appState.changedFiles.length === 0 && (
+          <div className="no-changes-message">No changes detected in the current workspace.</div>
+        )}
+
+        {/* File list matching SCM exactly */}
         {appState.changedFiles.length > 0 && (
           <ul className="file-list">
             {appState.changedFiles.map((file, index) => (
               <li key={index} className="file-item">
                 <span className="file-name">{file}</span>
                 <div className="file-actions">
-                  <button onClick={() => handleViewDiff(file)} title="View Diff">
-                    Diff
+                  <button 
+                    onClick={() => handleViewDiff(file)} 
+                    title="Open Changes"
+                    aria-label={`Open changes for ${file}`}
+                  >
+                    ⎕
                   </button>
-                  <button onClick={() => handleRevertFile(file)} title="Revert Changes" className="revert-button">
-                    Revert
+                  <button 
+                    onClick={() => handleRevertFile(file)} 
+                    title="Discard Changes"
+                    className="revert-button"
+                    aria-label={`Discard changes for ${file}`}
+                  >
+                    ↶
                   </button>
                 </div>
               </li>
