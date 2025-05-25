@@ -1,5 +1,5 @@
-// webview/App.tsx - Phase 3: Basic Grouping & Navigation
-import React, { useState, useEffect } from 'react';
+// webview/App.tsx - Phase 4: General Context Input & Persistence
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 const vscode = (window as any).acquireVsCodeApi();
@@ -15,6 +15,7 @@ interface AppState {
     currentGroup: CurrentGroup | null;
     currentView: 'fileselection' | 'group';
     selectedFiles: string[];
+    generalContext: string; // Phase 4: Add general context
 }
 
 const App: React.FC = () => {
@@ -23,9 +24,25 @@ const App: React.FC = () => {
     changedFiles: [], 
     currentGroup: null, 
     currentView: 'fileselection',
-    selectedFiles: []
+    selectedFiles: [],
+    generalContext: '' // Phase 4: Initialize general context
   });
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+  // Phase 4: Debounced function for general context updates
+  const debounceTimeout = React.useRef<NodeJS.Timeout | null>(null);
+  const debouncedUpdateGeneralContext = useCallback((context: string) => {
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+    debounceTimeout.current = setTimeout(() => {
+      console.log('[Webview App] Sending debounced general context update');
+      vscode.postMessage({
+        command: 'updateGeneralContext',
+        payload: { context: context }
+      });
+    }, 500); // 500ms debounce
+  }, []);
 
   useEffect(() => {
     const messageListener = (event: MessageEvent) => {
@@ -43,8 +60,12 @@ const App: React.FC = () => {
     setIsLoadingFiles(true);
     vscode.postMessage({ command: 'uiReady' });
 
+    // Cleanup timeout on unmount
     return () => {
       window.removeEventListener('message', messageListener);
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
     };
   }, []);
 
@@ -78,7 +99,7 @@ const App: React.FC = () => {
     });
   };
 
-  // Phase 3: New handlers for grouping functionality
+  // Phase 3: Grouping handlers
   const handleToggleFileSelection = (filePath: string) => {
     console.log(`[Webview App] Toggling selection for: ${filePath}`);
     vscode.postMessage({
@@ -119,6 +140,14 @@ const App: React.FC = () => {
     });
   };
 
+  // Phase 4: General context handler
+  const handleUpdateGeneralContext = (context: string) => {
+    // Update local state immediately for responsive UI
+    setAppState(prev => ({ ...prev, generalContext: context }));
+    // Send debounced update to backend
+    debouncedUpdateGeneralContext(context);
+  };
+
   // Render File Selection View
   const renderFileSelectionView = () => (
     <div className="app-container">
@@ -127,6 +156,29 @@ const App: React.FC = () => {
         <button className="secondary-button" onClick={handleClick}>
           Test Alert Count: {count}
         </button>
+      </div>
+
+      {/* Phase 4: General Context Section */}
+      <div className="general-context-section">
+        <h2>General Context</h2>
+        <div style={{ padding: '8px 12px' }}>
+          <textarea
+            value={appState.generalContext}
+            onChange={(e) => handleUpdateGeneralContext(e.target.value)}
+            placeholder="Add general context that applies to all commits (e.g., 'Working on user authentication feature', 'Bug fixes for v2.1 release')..."
+            className="general-context-textarea"
+            rows={3}
+            style={{
+              width: '100%',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+              marginBottom: '4px'
+            }}
+          />
+          <div className="context-help-text">
+            This context will be included in all commit message generations and is saved per workspace.
+          </div>
+        </div>
       </div>
 
       {/* Main changes section matching SCM layout */}
@@ -189,7 +241,7 @@ const App: React.FC = () => {
                     title="Open Changes"
                     aria-label={`Open changes for ${file}`}
                   >
-                    Diff
+                    ⎕
                   </button>
                   <button 
                     onClick={() => handleRevertFile(file)} 
@@ -225,6 +277,33 @@ const App: React.FC = () => {
 
       {/* Group content */}
       <div className="group-content" style={{ padding: '12px' }}>
+        {/* Phase 4: Show current general context in group view */}
+        {appState.generalContext && (
+          <div className="group-section" style={{ marginBottom: '16px' }}>
+            <div style={{ 
+              fontSize: '11px', 
+              fontWeight: '600', 
+              textTransform: 'uppercase', 
+              color: 'var(--vscode-sideBarSectionHeader-foreground)',
+              margin: '0 0 4px 0',
+              letterSpacing: '0.05em'
+            }}>
+              General Context (Applied to All Commits)
+            </div>
+            <div style={{
+              padding: '6px 8px',
+              backgroundColor: 'var(--vscode-input-background)',
+              border: '1px solid var(--vscode-input-border)',
+              borderRadius: '2px',
+              fontSize: '12px',
+              color: 'var(--vscode-descriptionForeground)',
+              fontStyle: 'italic'
+            }}>
+              "{appState.generalContext}"
+            </div>
+          </div>
+        )}
+
         {/* Files in group section */}
         <div className="group-section">
           <h3 style={{ 
@@ -247,7 +326,7 @@ const App: React.FC = () => {
                     title="Open Changes"
                     aria-label={`Open changes for ${file}`}
                   >
-                    Open Changes
+                    ⎕
                   </button>
                 </div>
               </li>
@@ -280,6 +359,9 @@ const App: React.FC = () => {
               boxSizing: 'border-box'
             }}
           />
+          <div className="context-help-text">
+            This context applies only to this specific group of files.
+          </div>
         </div>
 
         {/* Generated commit message section */}
@@ -310,7 +392,7 @@ const App: React.FC = () => {
           />
           
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button className="primary-button" style={{ fontSize: '13px' }}>
               Generate Message
             </button>
@@ -321,6 +403,11 @@ const App: React.FC = () => {
             >
               Stage Group
             </button>
+          </div>
+          
+          {/* Help text explaining the generation process */}
+          <div className="context-help-text" style={{ marginTop: '8px' }}>
+            Generate Message will use the general context, group-specific context, and file diffs to create a commit message.
           </div>
         </div>
       </div>
