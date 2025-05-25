@@ -1,18 +1,28 @@
-// src/services/StateService.ts - Phase 4: Add General Context
+// src/services/StateService.ts - Phase 5+6: Enhanced with Settings State
 import * as vscode from 'vscode';
 
 export interface CurrentGroup {
     files: string[];
     specificContext: string;
     commitMessage?: string;
+    isGenerating?: boolean; // Phase 5+6: Track message generation state
 }
 
 export interface AppState {
     changedFiles: string[];
     currentGroup: CurrentGroup | null;
-    currentView: 'fileselection' | 'group';
+    currentView: 'fileselection' | 'group' | 'settings'; // Phase 5+6: Add settings view
     selectedFiles: string[];
-    generalContext: string; // Phase 4: Add general context
+    generalContext: string;
+    // Phase 5+6: Settings state
+    settings: {
+        hasApiKey: boolean;
+        provider: 'openai' | 'anthropic';
+        model: string;
+        maxTokens: number;
+        temperature: number;
+        instructionsLength: number;
+    };
 }
 
 export class StateService {
@@ -21,7 +31,15 @@ export class StateService {
         currentGroup: null,
         currentView: 'fileselection',
         selectedFiles: [],
-        generalContext: '' // Phase 4: Initialize general context
+        generalContext: '',
+        settings: {
+            hasApiKey: false,
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            maxTokens: 4000,
+            temperature: 0.3,
+            instructionsLength: 0
+        }
     };
 
     private _onStateChanged = new vscode.EventEmitter<AppState>();
@@ -59,7 +77,8 @@ export class StateService {
         this._state.currentGroup = {
             files: [...files],
             specificContext: '',
-            commitMessage: undefined
+            commitMessage: undefined,
+            isGenerating: false
         };
         this._state.currentView = 'group';
         this._state.selectedFiles = []; // Clear selection after creating group
@@ -86,12 +105,12 @@ export class StateService {
         }
     }
 
-    public setCurrentView(view: 'fileselection' | 'group'): void {
+    public setCurrentView(view: 'fileselection' | 'group' | 'settings'): void {
         this._state.currentView = view;
         this._onStateChanged.fire({ ...this._state });
     }
 
-    // Phase 4: General context management
+    // General context management
     public setGeneralContext(context: string): void {
         this._state.generalContext = context;
         this._onStateChanged.fire({ ...this._state });
@@ -99,5 +118,27 @@ export class StateService {
 
     public getGeneralContext(): string {
         return this._state.generalContext;
+    }
+
+    // Phase 5+6: Message generation state
+    public setGeneratingMessage(isGenerating: boolean): void {
+        if (this._state.currentGroup) {
+            this._state.currentGroup.isGenerating = isGenerating;
+            this._onStateChanged.fire({ ...this._state });
+        }
+    }
+
+    public isGeneratingMessage(): boolean {
+        return this._state.currentGroup?.isGenerating || false;
+    }
+
+    // Phase 5+6: Settings state management
+    public updateSettings(settings: Partial<AppState['settings']>): void {
+        this._state.settings = { ...this._state.settings, ...settings };
+        this._onStateChanged.fire({ ...this._state });
+    }
+
+    public getSettings(): AppState['settings'] {
+        return { ...this._state.settings };
     }
 }
