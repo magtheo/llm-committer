@@ -1,4 +1,4 @@
-// webview/App.tsx - Phase 4: General Context Input & Persistence
+// webview/App.tsx - Phase 5+6: Complete LLM Integration with Claude Support
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
@@ -8,14 +8,23 @@ interface CurrentGroup {
     files: string[];
     specificContext: string;
     commitMessage?: string;
+    isGenerating?: boolean;
 }
 
 interface AppState {
     changedFiles: string[];
     currentGroup: CurrentGroup | null;
-    currentView: 'fileselection' | 'group';
+    currentView: 'fileselection' | 'group' | 'settings';
     selectedFiles: string[];
-    generalContext: string; // Phase 4: Add general context
+    generalContext: string;
+    settings: {
+        hasApiKey: boolean;
+        provider: 'openai' | 'anthropic';
+        model: string;
+        maxTokens: number;
+        temperature: number;
+        instructionsLength: number;
+    };
 }
 
 const App: React.FC = () => {
@@ -25,9 +34,27 @@ const App: React.FC = () => {
     currentGroup: null, 
     currentView: 'fileselection',
     selectedFiles: [],
-    generalContext: '' // Phase 4: Initialize general context
+    generalContext: '',
+    settings: {
+        hasApiKey: false,
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        maxTokens: 4000,
+        temperature: 0.3,
+        instructionsLength: 0
+    }
   });
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+  // Phase 5+6: Settings form state
+  const [settingsForm, setSettingsForm] = useState({
+    apiKey: '',
+    instructions: '',
+    provider: 'openai' as 'openai' | 'anthropic',
+    model: 'gpt-4o-mini',
+    maxTokens: 4000,
+    temperature: 0.3
+  });
 
   // Phase 4: Debounced function for general context updates
   const debounceTimeout = React.useRef<NodeJS.Timeout | null>(null);
@@ -41,7 +68,7 @@ const App: React.FC = () => {
         command: 'updateGeneralContext',
         payload: { context: context }
       });
-    }, 500); // 500ms debounce
+    }, 500);
   }, []);
 
   useEffect(() => {
@@ -52,6 +79,17 @@ const App: React.FC = () => {
           console.log('[Webview App] Received stateUpdate:', message.payload);
           setAppState(message.payload);
           setIsLoadingFiles(false);
+          
+          // Update settings form when switching to settings view OR when settings change
+          if (message.payload.currentView === 'settings' || message.payload.settings) {
+            setSettingsForm(prev => ({
+              ...prev,
+              provider: message.payload.settings.provider || 'openai',
+              model: message.payload.settings.model,
+              maxTokens: message.payload.settings.maxTokens,
+              temperature: message.payload.settings.temperature
+            }));
+          }
           break;
       }
     };
@@ -60,7 +98,6 @@ const App: React.FC = () => {
     setIsLoadingFiles(true);
     vscode.postMessage({ command: 'uiReady' });
 
-    // Cleanup timeout on unmount
     return () => {
       window.removeEventListener('message', messageListener);
       if (debounceTimeout.current) {
@@ -118,7 +155,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleNavigateToView = (view: 'fileselection' | 'group') => {
+  const handleNavigateToView = (view: 'fileselection' | 'group' | 'settings') => {
     console.log(`[Webview App] Navigating to view: ${view}`);
     vscode.postMessage({
       command: 'navigateToView',
@@ -142,11 +179,293 @@ const App: React.FC = () => {
 
   // Phase 4: General context handler
   const handleUpdateGeneralContext = (context: string) => {
-    // Update local state immediately for responsive UI
     setAppState(prev => ({ ...prev, generalContext: context }));
-    // Send debounced update to backend
     debouncedUpdateGeneralContext(context);
   };
+
+  // Phase 5+6: Settings handlers
+  const handleSaveApiKey = () => {
+    if (settingsForm.apiKey.trim()) {
+      vscode.postMessage({
+        command: 'saveApiKey',
+        payload: { apiKey: settingsForm.apiKey.trim() }
+      });
+      setSettingsForm(prev => ({ ...prev, apiKey: '' })); // Clear form for security
+    }
+  };
+
+  const handleSaveInstructions = () => {
+    vscode.postMessage({
+      command: 'saveLlmInstructions',
+      payload: { 
+        instructions: settingsForm.instructions,
+        // Also send current provider to ensure it's preserved
+        provider: settingsForm.provider
+      }
+    });
+  };
+
+  const handleSaveSettings = () => {
+    vscode.postMessage({
+      command: 'saveLlmSettings',
+      payload: {
+        provider: settingsForm.provider,
+        model: settingsForm.model,
+        maxTokens: settingsForm.maxTokens,
+        temperature: settingsForm.temperature
+      }
+    });
+  };
+
+  const handleTestConnection = () => {
+    vscode.postMessage({ command: 'testApiConnection' });
+  };
+
+  // Phase 5+6: Generate commit message
+  const handleGenerateMessage = () => {
+    if (!appState.currentGroup) return;
+    
+    console.log('[Webview App] Requesting commit message generation');
+    vscode.postMessage({
+      command: 'generateCommitMessage',
+      payload: {
+        files: appState.currentGroup.files,
+        generalContext: appState.generalContext,
+        groupContext: appState.currentGroup.specificContext
+      }
+    });
+  };
+
+  // Render Settings View
+  const renderSettingsView = () => (
+    <div className="app-container">
+      {/* Settings header with back button */}
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--vscode-sideBar-border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <button 
+          className="secondary-button" 
+          onClick={() => handleNavigateToView('fileselection')}
+          style={{ fontSize: '11px', padding: '2px 6px' }}
+        >
+          ← Back
+        </button>
+        <span style={{ fontSize: '13px', fontWeight: '600' }}>LLM Committer Settings</span>
+      </div>
+
+      {/* Settings content */}
+      <div className="settings-content" style={{ padding: '12px' }}>
+        {/* Provider Selection Section */}
+        <div className="settings-section" style={{ marginBottom: '20px' }}>
+          <h3>AI Provider</h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="provider-select">Provider</label>
+            <select
+              id="provider-select"
+              value={settingsForm.provider}
+              onChange={(e) => {
+                const newProvider = e.target.value as 'openai' | 'anthropic';
+                const defaultModel = newProvider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+                setSettingsForm(prev => ({ 
+                  ...prev, 
+                  provider: newProvider,
+                  model: defaultModel
+                }));
+              }}
+              style={{
+                width: '100%',
+                padding: '4px 8px',
+                fontSize: '13px',
+                backgroundColor: 'var(--vscode-input-background)',
+                color: 'var(--vscode-input-foreground)',
+                border: '1px solid var(--vscode-input-border)',
+                borderRadius: '2px'
+              }}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+            <div className="context-help-text">
+              Choose between OpenAI's GPT models or Anthropic's Claude models.
+            </div>
+          </div>
+        </div>
+
+        {/* API Key Section */}
+        <div className="settings-section" style={{ marginBottom: '20px' }}>
+          <h3>{settingsForm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Configuration</h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="api-key">API Key</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                id="api-key"
+                type="password"
+                value={settingsForm.apiKey}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                placeholder={
+                  appState.settings.hasApiKey ? 
+                    "••••••••••••••••" : 
+                    settingsForm.provider === 'anthropic' ? 
+                      "Enter your Anthropic API key (sk-ant-...)" :
+                      "Enter your OpenAI API key (sk-...)"
+                }
+                style={{ flex: 1 }}
+              />
+              <button 
+                className="primary-button" 
+                onClick={handleSaveApiKey}
+                disabled={!settingsForm.apiKey.trim()}
+                style={{ fontSize: '11px' }}
+              >
+                Save
+              </button>
+            </div>
+            <div className="context-help-text">
+              {appState.settings.hasApiKey ? 
+                '✅ API key is configured and stored securely' : 
+                `⚠️ ${settingsForm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key is required for commit message generation`
+              }
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <button 
+              className="secondary-button" 
+              onClick={handleTestConnection}
+              disabled={!appState.settings.hasApiKey}
+              style={{ fontSize: '11px' }}
+            >
+              🔗 Test API Connection
+            </button>
+          </div>
+        </div>
+
+        {/* Model Settings Section */}
+        <div className="settings-section" style={{ marginBottom: '20px' }}>
+          <h3>Model Configuration</h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="model-select">Model</label>
+            <select
+              id="model-select"
+              value={settingsForm.model}
+              onChange={(e) => setSettingsForm(prev => ({ ...prev, model: e.target.value }))}
+              style={{
+                width: '100%',
+                padding: '4px 8px',
+                fontSize: '13px',
+                backgroundColor: 'var(--vscode-input-background)',
+                color: 'var(--vscode-input-foreground)',
+                border: '1px solid var(--vscode-input-border)',
+                borderRadius: '2px'
+              }}
+            >
+              {settingsForm.provider === 'anthropic' ? (
+                <>
+                  <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Recommended)</option>
+                  <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                  <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                  <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
+                  <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                </>
+              ) : (
+                <>
+                  <option value="gpt-4o-mini">GPT-4o Mini (Recommended)</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                  <option value="gpt-4">GPT-4</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                </>
+              )}
+            </select>
+            <div className="context-help-text">
+              {settingsForm.provider === 'anthropic' ? 
+                'Claude 3.5 Haiku offers the best balance of quality and cost for commit messages.' :
+                'GPT-4o Mini offers the best balance of quality and cost for commit messages.'
+              }
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="max-tokens">Max Tokens: {settingsForm.maxTokens}</label>
+            <input
+              id="max-tokens"
+              type="range"
+              min="1000"
+              max="8000"
+              step="500"
+              value={settingsForm.maxTokens}
+              onChange={(e) => setSettingsForm(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
+              style={{ width: '100%' }}
+            />
+            <div className="context-help-text">
+              Maximum tokens for the entire request. Higher values allow more context but cost more.
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="temperature">Creativity: {settingsForm.temperature}</label>
+            <input
+              id="temperature"
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={settingsForm.temperature}
+              onChange={(e) => setSettingsForm(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+              style={{ width: '100%' }}
+            />
+            <div className="context-help-text">
+              Lower values (0.1-0.3) = more consistent, Higher values (0.7-1.0) = more creative
+            </div>
+          </div>
+
+          <button 
+            className="primary-button" 
+            onClick={handleSaveSettings}
+            style={{ fontSize: '13px' }}
+          >
+            Save Model Settings
+          </button>
+        </div>
+
+        {/* Instructions Section */}
+        <div className="settings-section">
+          <h3>LLM Instructions</h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label htmlFor="llm-instructions">Custom Instructions</label>
+            <textarea
+              id="llm-instructions"
+              value={settingsForm.instructions}
+              onChange={(e) => setSettingsForm(prev => ({ ...prev, instructions: e.target.value }))}
+              placeholder="Enter custom instructions for the LLM (optional). Default instructions will be used if empty."
+              style={{
+                width: '100%',
+                minHeight: '100px',
+                resize: 'vertical',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div className="context-help-text">
+              {appState.settings.instructionsLength > 0 ? 
+                `Current: ${appState.settings.instructionsLength} characters` : 
+                'Using default instructions (conventional commits, concise format)'
+              }
+            </div>
+          </div>
+
+          <button 
+            className="primary-button" 
+            onClick={handleSaveInstructions}
+            style={{ fontSize: '13px' }}
+          >
+            Save Instructions
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   // Render File Selection View
   const renderFileSelectionView = () => (
@@ -154,7 +473,7 @@ const App: React.FC = () => {
       {/* Test section - can be removed in production */}
       <div style={{ padding: '8px 20px', borderBottom: '1px solid var(--vscode-sideBar-border)' }}>
         <button className="secondary-button" onClick={handleClick}>
-          Test Alert Count: {count}
+          Test: {count}
         </button>
       </div>
 
@@ -183,10 +502,9 @@ const App: React.FC = () => {
 
       {/* Main changes section matching SCM layout */}
       <div className="changes-section">
-        {/* Section header matching SCM style */}
         <h2>Changes</h2>
         
-        {/* Toolbar area matching SCM */}
+        {/* Toolbar - just refresh and create group */}
         <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button 
             className="secondary-button" 
@@ -197,7 +515,6 @@ const App: React.FC = () => {
             {isLoadingFiles ? '⟳' : '↻'} Refresh
           </button>
           
-          {/* Create Group button - enabled when files are selected */}
           {appState.selectedFiles.length > 0 && (
             <button 
               className="primary-button" 
@@ -209,22 +526,18 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Loading state */}
         {isLoadingFiles && appState.changedFiles.length === 0 && (
           <div className="loading-indicator">Loading changes...</div>
         )}
 
-        {/* No changes message */}
         {!isLoadingFiles && appState.changedFiles.length === 0 && (
           <div className="no-changes-message">No changes detected in the current workspace.</div>
         )}
 
-        {/* File list with selection checkboxes */}
         {appState.changedFiles.length > 0 && (
           <ul className="file-list">
             {appState.changedFiles.map((file, index) => (
               <li key={index} className={`file-item ${appState.selectedFiles.includes(file) ? 'selected' : ''}`}>
-                {/* Selection checkbox */}
                 <input 
                   type="checkbox"
                   checked={appState.selectedFiles.includes(file)}
@@ -263,7 +576,6 @@ const App: React.FC = () => {
   // Render Group View
   const renderGroupView = () => (
     <div className="app-container">
-      {/* Group header with back button */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--vscode-sideBar-border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button 
           className="secondary-button" 
@@ -275,9 +587,7 @@ const App: React.FC = () => {
         <span style={{ fontSize: '13px', fontWeight: '600' }}>Create Commit Group</span>
       </div>
 
-      {/* Group content */}
       <div className="group-content" style={{ padding: '12px' }}>
-        {/* Phase 4: Show current general context in group view */}
         {appState.generalContext && (
           <div className="group-section" style={{ marginBottom: '16px' }}>
             <div style={{ 
@@ -304,18 +614,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Files in group section */}
         <div className="group-section">
-          <h3 style={{ 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase', 
-            color: 'var(--vscode-sideBarSectionHeader-foreground)',
-            margin: '0 0 8px 0',
-            letterSpacing: '0.05em'
-          }}>
-            Files in Group ({appState.currentGroup?.files.length || 0})
-          </h3>
+          <h3>Files in Group ({appState.currentGroup?.files.length || 0})</h3>
           <ul className="file-list" style={{ marginBottom: '16px' }}>
             {appState.currentGroup?.files.map((file, index) => (
               <li key={index} className="file-item">
@@ -334,19 +634,8 @@ const App: React.FC = () => {
           </ul>
         </div>
 
-        {/* Group-specific context section */}
         <div className="group-section" style={{ marginBottom: '16px' }}>
-          <label htmlFor="group-context" style={{ 
-            display: 'block', 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase',
-            color: 'var(--vscode-sideBarSectionHeader-foreground)',
-            margin: '0 0 8px 0',
-            letterSpacing: '0.05em'
-          }}>
-            Group Specific Context
-          </label>
+          <label htmlFor="group-context">Group Specific Context</label>
           <textarea
             id="group-context"
             value={appState.currentGroup?.specificContext || ''}
@@ -364,19 +653,8 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Generated commit message section */}
         <div className="group-section">
-          <label htmlFor="commit-message" style={{ 
-            display: 'block', 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase',
-            color: 'var(--vscode-sideBarSectionHeader-foreground)',
-            margin: '0 0 8px 0',
-            letterSpacing: '0.05em'
-          }}>
-            Commit Message
-          </label>
+          <label htmlFor="commit-message">Commit Message</label>
           <textarea
             id="commit-message"
             value={appState.currentGroup?.commitMessage || ''}
@@ -391,10 +669,14 @@ const App: React.FC = () => {
             }}
           />
           
-          {/* Action buttons */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button className="primary-button" style={{ fontSize: '13px' }}>
-              Generate Message
+            <button 
+              className="primary-button" 
+              onClick={handleGenerateMessage}
+              disabled={appState.currentGroup?.isGenerating || !appState.settings.hasApiKey}
+              style={{ fontSize: '13px' }}
+            >
+              {appState.currentGroup?.isGenerating ? '⟳ Generating...' : '🤖 Generate Message'}
             </button>
             <button 
               className="secondary-button" 
@@ -405,9 +687,11 @@ const App: React.FC = () => {
             </button>
           </div>
           
-          {/* Help text explaining the generation process */}
           <div className="context-help-text" style={{ marginTop: '8px' }}>
-            Generate Message will use the general context, group-specific context, and file diffs to create a commit message.
+            {!appState.settings.hasApiKey ? 
+              '⚠️ API key required - configure in Settings' :
+              'Generate Message will use the general context, group-specific context, and file diffs to create a commit message.'
+            }
           </div>
         </div>
       </div>
@@ -419,6 +703,7 @@ const App: React.FC = () => {
     <>
       {appState.currentView === 'fileselection' && renderFileSelectionView()}
       {appState.currentView === 'group' && renderGroupView()}
+      {appState.currentView === 'settings' && renderSettingsView()}
     </>
   );
 };
