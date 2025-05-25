@@ -1,4 +1,4 @@
-// src/services/StateService.ts - Phase 3: Basic Grouping & Navigation
+// src/services/StateService.ts - Phase 4: Add General Context
 import * as vscode from 'vscode';
 
 export interface CurrentGroup {
@@ -11,7 +11,8 @@ export interface AppState {
     changedFiles: string[];
     currentGroup: CurrentGroup | null;
     currentView: 'fileselection' | 'group';
-    selectedFiles: string[]; // Files selected for creating a new group
+    selectedFiles: string[];
+    generalContext: string; // Phase 4: Add general context
 }
 
 export class StateService {
@@ -19,7 +20,8 @@ export class StateService {
         changedFiles: [],
         currentGroup: null,
         currentView: 'fileselection',
-        selectedFiles: []
+        selectedFiles: [],
+        generalContext: '' // Phase 4: Initialize general context
     };
 
     private _onStateChanged = new vscode.EventEmitter<AppState>();
@@ -87,5 +89,15 @@ export class StateService {
     public setCurrentView(view: 'fileselection' | 'group'): void {
         this._state.currentView = view;
         this._onStateChanged.fire({ ...this._state });
+    }
+
+    // Phase 4: General context management
+    public setGeneralContext(context: string): void {
+        this._state.generalContext = context;
+        this._onStateChanged.fire({ ...this._state });
+    }
+
+    public getGeneralContext(): string {
+        return this._state.generalContext;
     }
 }
