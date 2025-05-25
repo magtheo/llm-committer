@@ -1,13 +1,15 @@
-// src/extension.ts - Phase 3: Basic Grouping & Navigation
+// src/extension.ts - Phase 4: General Context & Persistence
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { GitService } from './services/GitService';
 import { StateService, AppState } from './services/StateService';
+import { ConfigurationService } from './services/ConfigurationService';
 
 let gitService: GitService;
 let stateService: StateService;
+let configService: ConfigurationService;
 
 class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'llmCommitterView';
@@ -40,14 +42,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     
                 case 'uiReady':
                     console.log('[LLM-Committer] Webview reported "uiReady".');
-                    await updateChangedFilesAndNotifyState(this._view);
-                    // Send current state even if no files changed initially
-                    if (this._view) {
-                        this._view.webview.postMessage({
-                            command: 'stateUpdate',
-                            payload: stateService.state
-                        });
-                    }
+                    await this.initializeUIState();
                     return;
                     
                 case 'fetchChanges':
@@ -63,11 +58,11 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                             const workspaceRootUri = workspaceFolders[0].uri;
                             const fileUri = vscode.Uri.joinPath(workspaceRootUri, payload.filePath);
                             try {
-                                await vscode.commands.executeCommand('git.openChange', fileUri);
-                                console.log(`[LLM-Committer] Opened SCM diff for: ${payload.filePath}`);
+                                await configService.openFileDiff(fileUri);
+                                console.log(`[LLM-Committer] Opened diff for: ${payload.filePath}`);
                             } catch (e) {
-                                console.warn(`[LLM-Committer] 'git.openChange' failed for ${payload.filePath}, falling back to 'vscode.open':`, e);
-                                await vscode.commands.executeCommand('vscode.open', fileUri);
+                                console.error(`[LLM-Committer] Failed to open diff for ${payload.filePath}:`, e);
+                                vscode.window.showErrorMessage(`Failed to open diff for ${path.basename(payload.filePath)}`);
                             }
                         } else {
                             vscode.window.showErrorMessage('LLM Committer: No workspace folder open to view diff.');
@@ -102,7 +97,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     }
                     return;
 
-                // Phase 3: New message handlers for grouping functionality
+                // Phase 3: Grouping functionality
                 case 'toggleFileSelection':
                     if (payload && payload.filePath) {
                         console.log(`[LLM-Committer] Toggling selection for: ${payload.filePath}`);
@@ -143,8 +138,52 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         stateService.updateCurrentGroupCommitMessage(payload.message);
                     }
                     return;
+
+                // Phase 4: General context handling
+                case 'updateGeneralContext':
+                    if (payload && typeof payload.context === 'string') {
+                        console.log(`[LLM-Committer] Updating general context`);
+                        stateService.setGeneralContext(payload.context);
+                        // Persist to workspace storage
+                        try {
+                            await configService.setGeneralContext(payload.context);
+                            console.log(`[LLM-Committer] General context persisted`);
+                        } catch (error) {
+                            console.error(`[LLM-Committer] Failed to persist general context:`, error);
+                        }
+                    }
+                    return;
             }
         });
+    }
+
+    // Phase 4: Initialize UI state with persisted data
+    private async initializeUIState(): Promise<void> {
+        try {
+            // Load persisted general context
+            const generalContext = await configService.getGeneralContext();
+            stateService.setGeneralContext(generalContext);
+            
+            // Update changed files
+            await updateChangedFilesAndNotifyState(this._view);
+            
+            // Send initial state to webview
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'stateUpdate',
+                    payload: stateService.state
+                });
+            }
+        } catch (error) {
+            console.error('[LLM-Committer] Error initializing UI state:', error);
+            // Still send current state even if loading fails
+            if (this._view) {
+                this._view.webview.postMessage({
+                    command: 'stateUpdate',
+                    payload: stateService.state
+                });
+            }
+        }
     }
 
     private getWebviewContent(webview: vscode.Webview): string {
@@ -205,6 +244,7 @@ export function activate(context: vscode.ExtensionContext) {
     
     gitService = new GitService();
     stateService = new StateService();
+    configService = new ConfigurationService(context); // Phase 4: Initialize config service
 
     const provider = new LLMCommitterViewProvider(context.extensionUri);
     
