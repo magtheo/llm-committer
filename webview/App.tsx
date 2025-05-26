@@ -250,7 +250,7 @@ const App: React.FC = () => {
           onClick={() => handleNavigateToView('fileselection')}
           style={{ fontSize: '11px', padding: '2px 6px' }}
         >
-          ← Back
+          Back
         </button>
         <span style={{ fontSize: '13px', fontWeight: '600' }}>LLM Committer Settings</span>
       </div>
@@ -339,7 +339,7 @@ const App: React.FC = () => {
               disabled={!appState.settings.hasApiKey}
               style={{ fontSize: '11px' }}
             >
-              🔗 Test API Connection
+              Test API Connection
             </button>
           </div>
         </div>
@@ -558,7 +558,7 @@ const App: React.FC = () => {
                     title="Open Changes"
                     aria-label={`Open changes for ${file}`}
                   >
-                    ⎕
+                    Diff
                   </button>
                   <button 
                     onClick={() => handleRevertFile(file)} 
@@ -586,7 +586,7 @@ const App: React.FC = () => {
           onClick={() => handleNavigateToView('fileselection')}
           style={{ fontSize: '11px', padding: '2px 6px' }}
         >
-          ← Back
+          Back
         </button>
         <span style={{ fontSize: '13px', fontWeight: '600' }}>Create Commit Group</span>
       </div>
