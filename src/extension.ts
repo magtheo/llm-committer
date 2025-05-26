@@ -158,18 +158,25 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
 
                 // Phase 5+6: Settings handling
                 case 'saveApiKey':
-                    if (payload && typeof payload.apiKey === 'string') {
-                        console.log(`[LLM-Committer] Saving API key`);
-                        try {
-                            await configService.setApiKey(payload.apiKey);
-                            await this.updateSettingsState();
-                            vscode.window.showInformationMessage('API key saved successfully');
-                        } catch (error) {
-                            console.error(`[LLM-Committer] Failed to save API key:`, error);
-                            vscode.window.showErrorMessage(`Failed to save API key: ${(error as Error).message}`);
+                if (payload && typeof payload.apiKey === 'string') {
+                    console.log(`[LLM-Committer] Saving API key`);
+                    try {
+                        await configService.setApiKey(payload.apiKey);
+                        
+                        // Also save provider if included in payload
+                        if (payload.provider) {
+                            console.log(`[LLM-Committer] Also saving provider: ${payload.provider}`);
+                            await configService.setLlmProvider(payload.provider);
                         }
+                        
+                        await this.updateSettingsState();
+                        vscode.window.showInformationMessage('API key saved successfully');
+                    } catch (error) {
+                        console.error(`[LLM-Committer] Failed to save API key:`, error);
+                        vscode.window.showErrorMessage(`Failed to save API key: ${(error as Error).message}`);
                     }
-                    return;
+                }
+                return;
 
                 case 'saveLlmInstructions':
                     if (payload && typeof payload.instructions === 'string') {

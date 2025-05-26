@@ -186,9 +186,13 @@ const App: React.FC = () => {
   // Phase 5+6: Settings handlers
   const handleSaveApiKey = () => {
     if (settingsForm.apiKey.trim()) {
+      // Save both API key AND current provider setting
       vscode.postMessage({
         command: 'saveApiKey',
-        payload: { apiKey: settingsForm.apiKey.trim() }
+        payload: { 
+          apiKey: settingsForm.apiKey.trim(),
+          provider: settingsForm.provider  // Include current provider
+        }
       });
       setSettingsForm(prev => ({ ...prev, apiKey: '' })); // Clear form for security
     }
