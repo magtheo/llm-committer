@@ -1,4 +1,4 @@
-// webview/App.tsx - Phase 5+6: Complete LLM Integration with Claude Support
+// webview/App.tsx - Updated with settings loading functionality
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
@@ -71,6 +71,14 @@ const App: React.FC = () => {
     }, 500);
   }, []);
 
+  // NEW: Request settings when switching to settings view
+  useEffect(() => {
+    if (appState.currentView === 'settings') {
+      console.log('[Webview App] Requesting current settings');
+      vscode.postMessage({ command: 'getSettings' });
+    }
+  }, [appState.currentView]);
+
   useEffect(() => {
     const messageListener = (event: MessageEvent) => {
       const message = event.data;
@@ -88,6 +96,17 @@ const App: React.FC = () => {
               model: message.payload.settings.model,
               maxTokens: message.payload.settings.maxTokens,
               temperature: message.payload.settings.temperature
+            }));
+          }
+          break;
+          
+        // NEW: Handle settings loaded
+        case 'settingsLoaded':
+          console.log('[Webview App] Received settingsLoaded:', message.payload);
+          if (message.payload.instructions !== undefined) {
+            setSettingsForm(prev => ({
+              ...prev,
+              instructions: message.payload.instructions
             }));
           }
           break;

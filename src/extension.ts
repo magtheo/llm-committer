@@ -1,4 +1,4 @@
-// src/extension.ts - Phase 5+6: Complete LLM Integration
+// src/extension.ts - Updated with missing features from Phases 1-6
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -49,6 +49,8 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     
                 case 'fetchChanges':
                     console.log('[LLM-Committer] Webview requested "fetchChanges".');
+                    // Save all open files before refreshing
+                    await vscode.workspace.saveAll(false);
                     await updateChangedFilesAndNotifyState(this._view);
                     return;
                     
@@ -153,6 +155,18 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         } catch (error) {
                             console.error(`[LLM-Committer] Failed to persist general context:`, error);
                         }
+                    }
+                    return;
+
+                // NEW: Get settings handler
+                case 'getSettings':
+                    console.log('[LLM-Committer] Webview requested settings');
+                    const instructions = configService.getLlmInstructions();
+                    if (this._view) {
+                        this._view.webview.postMessage({
+                            command: 'settingsLoaded',
+                            payload: { instructions }
+                        });
                     }
                     return;
 
@@ -373,9 +387,11 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public refresh() {
+    public async refresh() {
         if (this._view) {
-            updateChangedFilesAndNotifyState(this._view);
+            // Save all open files before refreshing
+            await vscode.workspace.saveAll(false); // false = don't show save dialog for untitled files
+            await updateChangedFilesAndNotifyState(this._view);
         }
     }
 }
@@ -403,7 +419,7 @@ export function activate(context: vscode.ExtensionContext) {
     gitService = new GitService();
     stateService = new StateService();
     configService = new ConfigurationService(context);
-    llmService = new LLMService(configService); // Phase 5+6: Initialize LLM service
+    llmService = new LLMService(configService);
 
     const provider = new LLMCommitterViewProvider(context.extensionUri);
     
@@ -420,8 +436,17 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(stateChangeSubscription);
 
+    // NEW: Register file save watcher for auto-refresh
+    const fileWatcher = vscode.workspace.onDidSaveTextDocument(() => {
+        console.log('[LLM-Committer] File saved, refreshing changes list...');
+        provider.refresh();
+    });
+    context.subscriptions.push(fileWatcher);
+
     // Register refresh command
-    const refreshCommand = vscode.commands.registerCommand('llm-committer.refresh', () => {
+    const refreshCommand = vscode.commands.registerCommand('llm-committer.refresh', async () => {
+        // Save all open files before refreshing
+        await vscode.workspace.saveAll(false);
         provider.refresh();
     });
     context.subscriptions.push(refreshCommand);
