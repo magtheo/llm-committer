@@ -1,4 +1,4 @@
-/* webview/App.css - Phase 5+6: Complete LLM Integration Styles */
+/* webview/App.css - Includes Phase 7 Styles */
 
 body {
   font-family: var(--vscode-font-family);
@@ -8,6 +8,7 @@ body {
   padding: 0;
   background-color: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground);
+  overflow-y: auto; /* Ensure body can scroll if content exceeds viewport */
 }
 
 .app-container {
@@ -15,30 +16,38 @@ body {
 }
 
 /* Headers match SCM section headers */
-h1, h2 {
+h1, h2, h3 { /* Consolidated header styling */
   color: var(--vscode-sideBarSectionHeader-foreground);
   background-color: var(--vscode-sideBarSectionHeader-background);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 6px 20px 6px 20px;
+  padding: 6px 12px; /* Standardized padding */
   margin: 0;
-  border: none;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-sideBar-border)); /* Ensure border for sections */
 }
 
-h3 {
-  color: var(--vscode-sideBarSectionHeader-foreground);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0 0 8px 0;
+h2 { /* Specific for main section titles if needed */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-/* Phase 4: General Context Section */
+h3 { /* For sub-sections within views like Settings or Group views */
+  background-color: transparent; /* Sub-section headers might not need bg */
+  border-bottom: none;
+  padding-left: 0; /* Adjust if needed for indentation */
+  padding-right: 0;
+  color: var(--vscode-foreground); /* More subtle color for sub-headers */
+  text-transform: none; /* Often sub-headers are not all caps */
+  margin-bottom: 8px;
+}
+
+
+/* General Context Section */
 .general-context-section {
-  border-bottom: 1px solid var(--vscode-sideBar-border);
+  /* border-bottom: 1px solid var(--vscode-sideBar-border); -> Handled by hr or section h2 */
 }
 
 .general-context-textarea {
@@ -49,6 +58,9 @@ h3 {
   font-size: 13px;
   font-family: inherit;
   border-radius: 2px;
+  width: 100%;
+  box-sizing: border-box; /* Important for width 100% */
+  resize: vertical;
   
   &:focus {
     outline: none;
@@ -68,7 +80,7 @@ h3 {
   line-height: 1.3;
 }
 
-/* Phase 5+6: Settings specific styles */
+/* Settings specific styles */
 .settings-content {
   padding: 12px;
 }
@@ -78,49 +90,46 @@ h3 {
   padding-bottom: 16px;
   border-bottom: 1px solid var(--vscode-sideBar-border);
 }
-
 .settings-section:last-child {
   border-bottom: none;
   margin-bottom: 0;
 }
-
-.settings-section h3 {
-  color: var(--vscode-sideBarSectionHeader-foreground);
-  font-size: 13px;
+.settings-section h3 { /* Override for settings sub-headers */
+  color: var(--vscode-settings-headerForeground, var(--vscode-sideBarSectionHeader-foreground));
+  font-size: 13px; /* Slightly larger for settings sections */
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
   margin: 0 0 12px 0;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-background);
+  border-bottom: 1px solid var(--vscode-settings-headerBorder, var(--vscode-sideBarSectionHeader-border));
 }
 
-/* Enhanced input styling for settings */
+
 input[type="range"] {
   width: 100%;
   height: 4px;
   background: var(--vscode-scrollbarSlider-background);
   outline: none;
   border-radius: 2px;
-  
-  &::-webkit-slider-thumb {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--vscode-button-background);
-    cursor: pointer;
-    border: 2px solid var(--vscode-button-foreground);
-  }
-  
-  &::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--vscode-button-background);
-    cursor: pointer;
-    border: 2px solid var(--vscode-button-foreground);
-  }
+  vertical-align: middle; /* Align better with labels */
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+  border: 2px solid var(--vscode-button-foreground);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  cursor: pointer;
+  border: 2px solid var(--vscode-button-foreground);
 }
 
 select {
@@ -131,6 +140,8 @@ select {
   font-size: 13px;
   font-family: inherit;
   border-radius: 2px;
+  width: 100%; /* Make selects take full width in settings */
+  box-sizing: border-box;
   
   &:focus {
     outline: none;
@@ -138,63 +149,67 @@ select {
   }
 }
 
-/* Match SCM file list styling exactly */
+/* File List (common for changes, group view, staged group files) */
 .file-list {
   list-style-type: none;
   padding: 0;
   margin: 0;
   background-color: var(--vscode-sideBar-background);
+  max-height: 200px; /* Default max height, can be overridden */
+  overflow-y: auto;
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  padding: 0;
+  padding: 0; /* Let inner elements control padding for alignment */
   margin: 0;
-  min-height: 22px; /* Match SCM item height */
-  cursor: pointer;
-  border: none;
-  
-  /* Hover effects like SCM */
-  &:hover {
-    background-color: var(--vscode-list-hoverBackground);
-  }
-  
-  /* Focus/selection states */
-  &:focus,
-  &.selected {
-    background-color: var(--vscode-list-activeSelectionBackground);
-    color: var(--vscode-list-activeSelectionForeground);
-  }
+  min-height: 22px;
+  cursor: default; /* Default, can be pointer if whole item is clickable */
+  border: none; /* Remove individual item borders */
+  /* border-bottom: 1px solid var(--vscode-tree-tableColumnsBorder, var(--vscode-editorGroup-border)); */ /* Subtle separator */
+}
+.file-item:last-child {
+    border-bottom: none;
+}
+.file-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+.file-item.selected { /* For selected files in "Available Changes" */
+  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+.file-item.selected:hover {
+    background-color: var(--vscode-list-focusBackground, var(--vscode-list-activeSelectionBackground));
+}
+.file-item input[type="checkbox"] {
+  margin: 0 8px 0 12px; /* SCM like checkbox margin */
 }
 
-/* File name styling to match SCM */
 .file-name {
   flex-grow: 1;
-  padding: 3px 0 3px 20px; /* Match SCM indentation */
+  padding: 3px 4px; /* Reduced padding, let checkbox margin handle left indent */
   font-size: 13px;
   line-height: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--vscode-foreground);
+  color: var(--vscode-foreground); /* Ensure this is not overridden by .selected color if name shouldn't change */
+}
+.file-item.selected .file-name {
+    color: var(--vscode-list-activeSelectionForeground); /* Ensure text color changes on selection */
 }
 
-/* Adjust file name padding when checkbox is present */
-.file-item input[type="checkbox"] + .file-name {
-  padding-left: 4px;
-}
 
-/* Action buttons match VS Code toolbar buttons */
 .file-actions {
   display: flex;
   align-items: center;
   padding-right: 8px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  opacity: 0; /* Hidden by default, show on hover */
+  transition: opacity 0.1s ease-in-out;
 }
-
-.file-item:hover .file-actions {
+.file-item:hover .file-actions,
+.file-item .file-actions.always-visible { /* Add class if actions should sometimes be always visible */
   opacity: 1;
 }
 
@@ -204,396 +219,288 @@ select {
   color: var(--vscode-icon-foreground);
   padding: 2px 4px;
   margin: 0 1px;
-  border-radius: 2px;
+  border-radius: 3px; /* Slightly more rounded */
   cursor: pointer;
-  font-size: 11px;
-  min-width: 16px;
-  height: 16px;
+  font-size: 11px; /* Can be adjusted */
+  min-width: 20px; /* For better click target */
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   
   &:hover {
-    background-color: var(--vscode-toolbar-hoverBackground);
-    color: var(--vscode-toolbar-hoverOutline);
+    background-color: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
   }
-  
   &:active {
-    background-color: var(--vscode-toolbar-activeBackground);
+    background-color: var(--vscode-toolbar-activeBackground, var(--vscode-list-activeSelectionBackground));
   }
 }
 
-/* Special styling for destructive actions */
-.revert-button {
-  color: var(--vscode-errorForeground) !important;
-  
-  &:hover {
-    background-color: var(--vscode-errorBackground);
-    color: var(--vscode-errorForeground);
-  }
-}
 
 /* VS Code standard button styling */
-button.primary-button {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+button.primary-button, button.secondary-button {
   border: 1px solid var(--vscode-button-border, transparent);
-  padding: 4px 14px;
+  padding: 4px 12px; /* Slightly more padding */
   font-size: 13px;
   font-family: inherit;
   border-radius: 2px;
   cursor: pointer;
-  
-  &:hover:not(:disabled) {
-    background-color: var(--vscode-button-hoverBackground);
-  }
-  
-  &:focus {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: 2px;
-  }
-  
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
+  text-align: center;
+  white-space: nowrap;
 }
-
-/* Secondary button styling */
+button.primary-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+button.primary-button:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
 button.secondary-button {
   background-color: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
-  border: 1px solid var(--vscode-button-border, transparent);
-  
-  &:hover:not(:disabled) {
-    background-color: var(--vscode-button-secondaryHoverBackground);
-  }
-  
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
+}
+button.secondary-button:hover:not(:disabled) {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+button:disabled {
+  opacity: 0.5; /* More pronounced disabled state */
+  cursor: not-allowed;
+}
+button:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 
-/* Input styling to match VS Code */
-input, textarea {
+/* Input styling */
+input[type="text"], input[type="password"], textarea {
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
   padding: 4px 8px;
   font-size: 13px;
   font-family: inherit;
-  
-  &:focus {
-    outline: none;
-    border-color: var(--vscode-focusBorder);
-  }
-  
-  &::placeholder {
-    color: var(--vscode-input-placeholderForeground);
-  }
+  border-radius: 2px;
+  width: 100%; /* Default to full width */
+  box-sizing: border-box;
+}
+input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+textarea {
+  min-height: 60px; /* Default min height for textareas */
+  resize: vertical;
+}
+input::placeholder, textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
 }
 
-/* Checkbox styling to match VS Code */
+/* Checkbox styling */
 input[type="checkbox"] {
   width: 16px;
   height: 16px;
   padding: 0;
-  margin: 0;
-  border: 1px solid var(--vscode-checkbox-border);
-  background-color: var(--vscode-checkbox-background);
-  border-radius: 2px;
+  margin: 0; /* Reset margin, control with flexbox gap or parent padding */
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border));
+  background-color: var(--vscode-checkbox-background, var(--vscode-input-background));
+  border-radius: 3px; /* Slightly more rounded */
   cursor: pointer;
-  
-  &:checked {
-    background-color: var(--vscode-checkbox-selectBackground);
-    border-color: var(--vscode-checkbox-selectBorder);
-  }
-  
-  &:focus {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: 1px;
-  }
+  vertical-align: middle; /* Align better with text */
+}
+input[type="checkbox"]:checked {
+  background-color: var(--vscode-checkbox-selectBackground, var(--vscode-button-background));
+  border-color: var(--vscode-checkbox-selectBorder, var(--vscode-button-background));
+  /* Add a checkmark using pseudo-element or background image if needed, VSCode usually handles this */
+}
+input[type="checkbox"]:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 /* Loading states */
 .loading-indicator {
-  color: var(--vscode-progressBar-background);
+  color: var(--vscode-descriptionForeground); /* Use description for less prominent loading text */
   font-size: 13px;
-  padding: 8px 20px;
-}
-
-/* Match SCM section styling */
-.changes-section {
-  margin: 0;
-}
-
-.changes-section > h2 {
-  /* Section headers already styled above */
+  padding: 8px 12px; /* Consistent with section padding */
+  font-style: italic;
 }
 
 /* No changes message styling */
 .no-changes-message {
-  padding: 8px 20px;
+  padding: 8px 12px;
   color: var(--vscode-descriptionForeground);
   font-size: 13px;
   font-style: italic;
 }
 
-/* Group view specific styling */
+/* Group view specific styling (for new group and review/edit group) */
 .group-content {
   padding: 12px;
 }
-
 .group-section {
   margin-bottom: 16px;
 }
-
 .group-section:last-child {
   margin-bottom: 0;
 }
-
-/* Labels for form elements */
-label {
+.group-section > label { /* Labels within group sections */
   display: block;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  color: var(--vscode-sideBarSectionHeader-foreground);
-  margin: 0 0 8px 0;
-  letter-spacing: 0.05em;
+  /* text-transform: uppercase; */ /* Optional for labels */
+  color: var(--vscode-foreground); /* Standard text color for labels */
+  margin: 0 0 6px 0;
 }
 
 /* Dividers/separators */
 hr {
   border: none;
-  border-top: 1px solid var(--vscode-sideBar-border, var(--vscode-panel-border));
-  margin: 0;
+  border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border)); /* Use a common border color */
+  margin: 0; /* Reset margin, control spacing with parent padding/margin */
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 14px;
+/* Scrollbar styling (already present in previous CSS, ensure it's there) */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--vscode-scrollbar-shadow); }
+::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 5px; border: 2px solid var(--vscode-sideBar-background); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground); }
+
+
+/* --- BEGIN PHASE 7 STYLES --- */
+
+.staged-changes-section {
+    /* Uses common h2 style */
 }
 
-::-webkit-scrollbar-track {
-  background: var(--vscode-scrollbar-shadow);
+.staged-group-item {
+    /* padding is set inline in App.tsx for now */
+    /* border-bottom: 1px solid var(--vscode-sideBar-border); -> also inline */
+    /* No specific styles needed if structure is simple li > div > (span, div > buttons) */
+}
+.staged-group-item:last-child {
+    border-bottom: none; /* If border is applied to items */
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background);
-  border-radius: 7px;
-  border: 3px solid var(--vscode-sideBar-background);
+.staged-group-item details > summary {
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground);
+    padding: 2px 0;
+    outline: none; /* Remove focus outline from summary itself */
+}
+.staged-group-item details > summary:hover {
+    color: var(--vscode-foreground);
+}
+.staged-group-item details > summary::marker { /* Style the disclosure triangle */
+    color: var(--vscode-icon-foreground);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: var(--vscode-scrollbarSlider-activeBackground);
-}
-
-/* Selection highlight for selected files */
-.file-item.selected {
-  background-color: var(--vscode-list-inactiveSelectionBackground);
-  color: var(--vscode-list-inactiveSelectionForeground);
-}
-
-.file-item.selected:hover {
-  background-color: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
-}
-
-/* Button group styling */
-.button-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-/* Phase 5+6: Loading state for generate button */
-button.primary-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Status indicators in settings */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  margin-left: 8px;
-}
-
-.status-indicator.success {
-  color: var(--vscode-testing-iconPassed);
-}
-
-.status-indicator.warning {
-  color: var(--vscode-editorWarning-foreground);
-}
-
-.status-indicator.error {
-  color: var(--vscode-errorForeground);
-}
-
-/* Responsive adjustments */
-@media (max-width: 300px) {
-  .file-name {
-    padding-left: 8px;
-  }
-  
-  .file-actions {
-    padding-right: 4px;
-  }
-  
-  .button-group {
-    flex-direction: column;
-    gap: 4px;
-  }
-  
-  .general-context-textarea {
-    min-height: 50px;
-  }
-  
-  .settings-content {
-    padding: 8px;
-  }
-  
-  .settings-section {
-    margin-bottom: 16px;
-  }
-
-  /* Stack form elements vertically on narrow screens */
-  .settings-section div[style*="display: flex"] {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  /* Reduce input sizes */
-  input, textarea, select {
+.staged-group-item details ul {
+    padding-left: 20px; /* Indent file list under details, more than default */
     font-size: 12px;
-  }
-  
-  /* Smaller buttons on mobile */
-  button {
-    padding: 3px 8px;
+    list-style-type: none; /* No bullets for cleaner look */
+    margin: 4px 0;
+}
+.staged-group-item details ul li {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 1px 0; /* Small padding for list items */
+    color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); /* Color for files in staged group */
+}
+
+
+.commit-feedback-area {
+    padding: 8px 12px; /* Consistent padding */
+    font-size: 11px;
+    max-height: 100px;
+    overflow-y: auto;
+    /* border-bottom: 1px solid var(--vscode-sideBar-border); */ /* May not need border if hr is used */
+    margin-bottom: 8px;
+}
+.commit-feedback-area div { /* Each feedback message */
+    padding: 2px 0;
+}
+.commit-feedback-area .feedback-info {
+    color: var(--vscode-descriptionForeground);
+}
+.commit-feedback-area .feedback-error {
+    color: var(--vscode-errorForeground);
+    font-weight: bold;
+}
+.commit-feedback-area .feedback-warning {
+    color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+
+.context-preview { /* For displaying general context in group views */
+    padding: 6px 8px;
+    background-color: var(--vscode-textBlockQuote-background, var(--vscode-input-background));
+    border: 1px solid var(--vscode-textBlockQuote-border, var(--vscode-input-border));
+    border-radius: 2px;
     font-size: 12px;
-  }
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    margin-top: 4px;
+    max-height: 60px; /* Limit height */
+    overflow-y: auto; /* Allow scroll if context is long */
+    white-space: pre-wrap;
+    word-break: break-word; /* Break long words */
 }
 
-/* Additional utility classes for Phase 5+6 */
-
-/* Success states */
-.success-state {
-  color: var(--vscode-testing-iconPassed);
+/* Destructive action button styling */
+.revert-button, button.revert-button {
+  color: var(--vscode-errorForeground) !important;
+  /* background-color: transparent !important; */ /* Ensure background is transparent initially if it's a secondary-style button */
+}
+.revert-button:hover, button.revert-button:hover {
+  background-color: var(--vscode-statusBarItem-errorBackground, rgba(200, 50, 50, 0.2)) !important; /* Use a distinct error hover */
+  color: var(--vscode-errorForeground) !important;
+}
+.file-actions button.revert-button { /* For small icon buttons like 'discard' or 'remove from group' */
+    font-weight: bold; /* Make icons like ↶ or ✕ more visible */
 }
 
-.success-state::before {
-  content: "✅ ";
-}
-
-/* Warning states */
-.warning-state {
-  color: var(--vscode-editorWarning-foreground);
-}
-
-.warning-state::before {
-  content: "⚠️ ";
-}
-
-/* Error states */
-.error-state {
-  color: var(--vscode-errorForeground);
-}
-
-.error-state::before {
-  content: "❌ ";
-}
 
 /* Loading spinner animation */
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-
 .loading-spinner {
   display: inline-block;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite; /* Faster spin */
+  margin-right: 4px; /* Space from text if used inline */
+  line-height: 1; /* Prevent extra space */
+  vertical-align: middle; /* Align with text */
 }
 
-/* Settings form layout helpers */
-.form-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
+
+/* Warning/Error states text (can be used with icons) */
+.warning-state {
+  color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+  font-size: 11px;
+  margin-top: 4px;
+}
+.error-state {
+  color: var(--vscode-errorForeground);
+  font-size: 11px;
+  margin-top: 4px;
 }
 
-.form-row label {
-  min-width: 80px;
-  margin: 0;
-  text-transform: none;
-  font-size: 12px;
+/* Specific to review/edit view */
+.review-edit-group-view .file-list { /* If needed to override default file-list for this view */
+    max-height: 150px; /* Example: different max height */
 }
 
-.form-group {
-  margin-bottom: 16px;
+/* Unsaved changes indicator */
+/* This is usually handled by text, but if a specific class is needed: */
+.unsaved-indicator {
+    font-size: 10px;
+    color: var(--vscode-editorWarning-foreground);
+    font-style: italic;
+    margin-left: 8px;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-/* Enhanced focus states for accessibility */
-input:focus,
-textarea:focus,
-select:focus,
-button:focus {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  .file-item {
-    border: 1px solid var(--vscode-foreground);
-  }
-  
-  .settings-section {
-    border: 1px solid var(--vscode-foreground);
-    padding: 8px;
-  }
-  
-  button {
-    border: 2px solid var(--vscode-foreground);
-  }
-}
-
-/* Dark/light theme specific adjustments */
-@media (prefers-color-scheme: dark) {
-  .context-help-text {
-    opacity: 0.9;
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  .context-help-text {
-    opacity: 0.8;
-  }
-}
-
-/* Print styles (for documentation/debugging) */
-@media print {
-  .file-actions,
-  button {
-    display: none;
-  }
-  
-  .app-container {
-    background: white;
-    color: black;
-  }
-}
+/* --- END PHASE 7 STYLES --- */
