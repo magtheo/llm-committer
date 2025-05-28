@@ -1,13 +1,18 @@
-// src/services/ConfigurationService.ts - Phase 5+6: Complete Configuration Management
+// src/services/ConfigurationService.ts
 import * as vscode from 'vscode';
+
+// Define and export LLMProvider outside the class
+export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'openrouter'] as const;
+export type LLMProvider = typeof LLM_PROVIDERS[number];
 
 export interface LLMSettings {
     apiKey: string;
     instructions: string;
-    provider: 'openai' | 'anthropic';
+    provider: LLMProvider; // Uses the exported type
     model: string;
     maxTokens: number;
     temperature: number;
+    openRouterRefererUrl?: string;
 }
 
 export class ConfigurationService {
@@ -66,14 +71,14 @@ export class ConfigurationService {
     }
 
     // LLM Provider Configuration
-    public getLlmProvider(): 'openai' | 'anthropic' {
+    public getLlmProvider(): LLMProvider {
         const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
-        const provider = config.get<'openai' | 'anthropic'>('llmProvider');
+        const provider = config.get<LLMProvider>('llmProvider');
         console.log(`[ConfigService] Getting LLM provider: ${provider || 'openai (default)'}`);
         return provider || 'openai';
     }
 
-    public async setLlmProvider(provider: 'openai' | 'anthropic'): Promise<void> {
+    public async setLlmProvider(provider: LLMProvider): Promise<void> {
         console.log(`[ConfigService] Setting LLM provider to: ${provider}`);
         const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
         await config.update('llmProvider', provider, vscode.ConfigurationTarget.Workspace);
@@ -84,7 +89,15 @@ export class ConfigurationService {
     public getLlmModel(): string {
         const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
         const provider = this.getLlmProvider();
-        const defaultModel = provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+        let defaultModel = 'gpt-4o-mini'; // Overall default
+        switch (provider) {
+            case 'anthropic': defaultModel = 'claude-3-5-sonnet-20240620'; break;
+            case 'gemini': defaultModel = 'gemini-1.5-flash-latest'; break;
+            case 'openrouter': defaultModel = 'openrouter/auto'; break;
+            case 'openai':
+            default:
+                defaultModel = 'gpt-4o-mini'; break;
+        }
         return config.get<string>('llmModel', defaultModel);
     }
 
@@ -115,6 +128,12 @@ export class ConfigurationService {
         await config.update('temperature', temperature, vscode.ConfigurationTarget.Workspace);
     }
 
+    // OpenRouter Referer URL
+    public getOpenRouterRefererUrl(): string {
+        const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
+        return config.get<string>('openRouterRefererUrl', 'http://localhost');
+    }
+
     // Get all LLM settings at once
     public async getLLMSettings(): Promise<LLMSettings> {
         return {
@@ -123,7 +142,8 @@ export class ConfigurationService {
             provider: this.getLlmProvider(),
             model: this.getLlmModel(),
             maxTokens: this.getMaxTokens(),
-            temperature: this.getTemperature()
+            temperature: this.getTemperature(),
+            openRouterRefererUrl: this.getOpenRouterRefererUrl()
         };
     }
 
@@ -151,7 +171,7 @@ Generate a single commit message that best summarizes the changes.`;
     }
 
     // Validate API key format (basic validation)
-    public validateApiKey(apiKey: string, provider?: 'openai' | 'anthropic'): { valid: boolean; error?: string } {
+    public validateApiKey(apiKey: string, provider?: LLMProvider): { valid: boolean; error?: string } {
         if (!apiKey || !apiKey.trim()) {
             return { valid: false, error: 'API key is required' };
         }
@@ -160,7 +180,6 @@ Generate a single commit message that best summarizes the changes.`;
         const currentProvider = provider || this.getLlmProvider();
         
         if (currentProvider === 'openai') {
-            // OpenAI API key format validation
             if (trimmed.startsWith('sk-') && trimmed.length >= 20) {
                 return { valid: true };
             }
@@ -169,7 +188,6 @@ Generate a single commit message that best summarizes the changes.`;
                 error: 'OpenAI API key should start with "sk-" and be at least 20 characters long' 
             };
         } else if (currentProvider === 'anthropic') {
-            // Anthropic API key format validation
             if (trimmed.startsWith('sk-ant-') && trimmed.length >= 20) {
                 return { valid: true };
             }
@@ -177,8 +195,17 @@ Generate a single commit message that best summarizes the changes.`;
                 valid: false, 
                 error: 'Anthropic API key should start with "sk-ant-" and be at least 20 characters long' 
             };
+        } else if (currentProvider === 'gemini') {
+            if (trimmed.length >= 30) { 
+                return { valid: true };
+            }
+            return { valid: false, error: 'Gemini API key seems too short.' };
+        } else if (currentProvider === 'openrouter') {
+            if (trimmed.startsWith('sk-or-') && trimmed.length >= 20) {
+                return { valid: true };
+            }
+            return { valid: false, error: 'OpenRouter API key should start with "sk-or-".' };
         }
-
         return { valid: false, error: 'Unknown provider' };
     }
 
@@ -189,8 +216,9 @@ Generate a single commit message that best summarizes the changes.`;
             model: this.getLlmModel(),
             maxTokens: this.getMaxTokens(),
             temperature: this.getTemperature(),
-            hasApiKey: this.getApiKey().then(key => !!key),
-            instructionsLength: this.getLlmInstructions().length
+            hasApiKey: this.getApiKey().then(key => !!key), 
+            instructionsLength: this.getLlmInstructions().length,
+            openRouterRefererUrl: this.getOpenRouterRefererUrl()
         };
     }
 }
