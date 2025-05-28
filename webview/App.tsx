@@ -18,20 +18,24 @@ interface CurrentGroup {
     isGenerating?: boolean;
 }
 
+type LLMProviderWebview = 'openai' | 'anthropic' | 'gemini' | 'openrouter';
+
+interface WebviewSettings {
+    hasApiKey: boolean;
+    provider: LLMProviderWebview;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    instructionsLength: number;
+    openRouterRefererUrl?: string; // <-- ADD THIS LINE
+}
 interface AppState {
     changedFiles: string[];
     currentGroup: CurrentGroup | null;
     currentView: 'fileselection' | 'group' | 'settings' | 'reviewStagedGroup';
     selectedFiles: string[];
     generalContext: string;
-    settings: {
-        hasApiKey: boolean;
-        provider: 'openai' | 'anthropic';
-        model: string;
-        maxTokens: number;
-        temperature: number;
-        instructionsLength: number;
-    };
+    settings: WebviewSettings;
     stagedGroups: StagedGroup[];
     currentEditingStagedGroupId: string | null;
 }
@@ -51,7 +55,6 @@ interface EditingStagedGroupState {
 
 
 const App: React.FC = () => {
-  // Count state is for testing, can be removed later
   const [count, setCount] = useState(0);
   
   const [appState, setAppState] = useState<AppState>({
@@ -66,7 +69,8 @@ const App: React.FC = () => {
         model: 'gpt-4o-mini',
         maxTokens: 4000,
         temperature: 0.3,
-        instructionsLength: 0
+        instructionsLength: 0,
+        openRouterRefererUrl: 'http://localhost', // Initialize with a default or undefined
     },
     stagedGroups: [],
     currentEditingStagedGroupId: null,
@@ -76,16 +80,35 @@ const App: React.FC = () => {
   const [settingsForm, setSettingsForm] = useState({
     apiKey: '',
     instructions: '',
-    provider: 'openai' as 'openai' | 'anthropic',
+    provider: 'openai' as LLMProviderWebview,
     model: 'gpt-4o-mini',
     maxTokens: 4000,
     temperature: 0.3
+    // No need for openRouterRefererUrl here as it's not directly editable in this form
   });
 
   const [commitFeedback, setCommitFeedback] = useState<CommitOperationFeedback[]>([]);
   const [isCommittingAll, setIsCommittingAll] = useState(false);
-
   const [editingStagedGroupData, setEditingStagedGroupData] = useState<EditingStagedGroupState | null>(null);
+
+  const getDefaultModelForProvider = (provider: LLMProviderWebview): string => {
+    switch (provider) {
+        case 'openai': return 'gpt-4o-mini';
+        case 'anthropic': return 'claude-3-5-sonnet-20240620';
+        case 'gemini': return 'gemini-1.5-flash-latest';
+        case 'openrouter': return 'openrouter/auto';
+        default: return 'gpt-4o-mini';
+    }
+  };
+
+  // Effect to update settingsForm.provider and settingsForm.model when appState.settings change
+  useEffect(() => {
+    setSettingsForm(prev => ({
+        ...prev,
+        provider: appState.settings.provider,
+        model: appState.settings.model || getDefaultModelForProvider(appState.settings.provider)
+    }));
+  }, [appState.settings.provider, appState.settings.model]);
 
 
   const debounceTimeout = React.useRef<NodeJS.Timeout | null>(null);
@@ -129,20 +152,18 @@ const App: React.FC = () => {
           }
         } else {
           console.warn(`[Webview App] In reviewStagedGroup view, but group ID ${appState.currentEditingStagedGroupId} not found in stagedGroups. Navigating back.`);
-          handleNavigateToView('fileselection'); // Navigate back if group is gone
+          handleNavigateToView('fileselection'); 
         }
       } else {
         console.warn("[Webview App] In reviewStagedGroup view but no currentEditingStagedGroupId. Navigating back.");
-        handleNavigateToView('fileselection'); // Navigate back if ID is missing
+        handleNavigateToView('fileselection'); 
       }
     } else { 
-      // This 'else' covers 'fileselection' and 'group' views (and any other future views not 'settings' or 'reviewStagedGroup')
       if (editingStagedGroupData !== null) {
         console.log(`[Webview App] currentView is ${appState.currentView}, clearing editingStagedGroupData.`);
         setEditingStagedGroupData(null);
       }
     }
-  // Dependency array remains the same:
   }, [appState.currentView, appState.currentEditingStagedGroupId, appState.stagedGroups]); 
   
 
@@ -152,17 +173,27 @@ const App: React.FC = () => {
       console.log('[Webview App] Received message:', message.command, message.payload);
       switch (message.command) {
         case 'stateUpdate':
+          // Ensure all parts of settings are updated, including openRouterRefererUrl
+          const newSettingsPayload = message.payload.settings
+            ? {
+                ...message.payload.settings,
+                openRouterRefererUrl: message.payload.settings.openRouterRefererUrl ?? appState.settings.openRouterRefererUrl,
+              }
+            : appState.settings;
+
           setAppState(prevAppState => ({
             ...prevAppState,
-            ...message.payload
+            ...message.payload,
+            settings: newSettingsPayload, // Use the merged settings
           }));
           setIsLoadingFiles(false);
           
           if (message.payload.settings) {
+            const newProvider = message.payload.settings.provider || 'openai';
             setSettingsForm(prev => ({
               ...prev,
-              provider: message.payload.settings.provider || 'openai',
-              model: message.payload.settings.model || (message.payload.settings.provider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini'),
+              provider: newProvider,
+              model: message.payload.settings.model || getDefaultModelForProvider(newProvider as LLMProviderWebview),
               maxTokens: message.payload.settings.maxTokens || 4000,
               temperature: message.payload.settings.temperature !== undefined ? message.payload.settings.temperature : 0.3,
             }));
@@ -206,7 +237,7 @@ const App: React.FC = () => {
         clearTimeout(debounceTimeout.current);
       }
     };
-  }, [editingStagedGroupData, appState.currentEditingStagedGroupId]);
+  }, [editingStagedGroupData, appState.currentEditingStagedGroupId, appState.settings.openRouterRefererUrl]); // Added dependency
 
   const handleClick = () => {
     setCount(prevCount => prevCount + 1);
@@ -257,9 +288,7 @@ const App: React.FC = () => {
     }
   };
 
-  // --- CORRECTION POINT 1 START ---
   const handleNavigateToView = (view: AppState['currentView']) => {
-  // --- CORRECTION POINT 1 END ---
     console.log(`[Webview App] Navigating to view: ${view}`);
     vscode.postMessage({
       command: 'navigateToView',
@@ -304,19 +333,20 @@ const App: React.FC = () => {
       command: 'saveLlmInstructions',
       payload: { 
         instructions: settingsForm.instructions,
-        provider: settingsForm.provider
+        provider: settingsForm.provider 
       }
     });
   };
 
-  const handleSaveLlmSettings = () => { // Renamed from handleSaveSettings for clarity
+  const handleSaveLlmSettings = () => {
     vscode.postMessage({
-      command: 'saveLlmSettings', // Ensure extension expects 'saveLlmSettings'
+      command: 'saveLlmSettings',
       payload: {
         provider: settingsForm.provider,
         model: settingsForm.model,
         maxTokens: settingsForm.maxTokens,
         temperature: settingsForm.temperature
+        // Note: openRouterRefererUrl is saved via VS Code settings, not this button
       }
     });
   };
@@ -325,13 +355,12 @@ const App: React.FC = () => {
     vscode.postMessage({ command: 'testApiConnection' });
   };
 
-  const handleGenerateNewGroupMessage = () => { // Renamed from handleGenerateMessage
+  const handleGenerateNewGroupMessage = () => {
     if (!appState.currentGroup) return;
     vscode.postMessage({
       command: 'generateCommitMessage',
       payload: {
         files: appState.currentGroup.files,
-        // generalContext & groupContext are read by extension from its state for new group
       }
     });
   };
@@ -436,58 +465,6 @@ const App: React.FC = () => {
         </div>
       </div>
       <hr />
-
-      <div className="staged-changes-section">
-        <h2>
-            Staged Groups ({appState.stagedGroups.length})
-            {appState.stagedGroups.length > 0 && (
-                 <button
-                    className="primary-button"
-                    onClick={handleCommitAllStaged}
-                    disabled={isCommittingAll || appState.stagedGroups.length === 0}
-                    style={{ fontSize: '11px', padding: '2px 8px', marginLeft: '10px', float: 'right', marginRight: '12px' }}
-                >
-                    {isCommittingAll ? 'Committing...' : `Commit All (${appState.stagedGroups.length})`}
-                </button>
-            )}
-        </h2>
-        {isCommittingAll && <div className="loading-indicator" style={{paddingLeft: '12px'}}>Processing commits...</div>}
-        {commitFeedback.length > 0 && (
-            <div className="commit-feedback-area">
-                {commitFeedback.map(fb => (
-                    <div key={fb.timestamp} className={`feedback-${fb.type}`}>{(fb.type === 'error' ? '❌ ' : fb.type === 'warning' ? '⚠️ ' : 'ℹ️ ')} {fb.message}</div>
-                ))}
-            </div>
-        )}
-        {appState.stagedGroups.length === 0 && !isCommittingAll && (
-            <div className="no-changes-message" style={{padding: '8px 12px'}}>No groups are currently staged.</div>
-        )}
-        {appState.stagedGroups.length > 0 && (
-            <ul className="file-list">
-                {appState.stagedGroups.map(group => (
-                    <li key={group.id} className="staged-group-item" style={{ padding: '4px 12px', borderBottom: '1px solid var(--vscode-sideBar-border)'}}>
-                        <div style={{ fontWeight: 'bold', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span title={group.commitMessage} style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1, marginRight: '8px' }}>
-                                {(group.commitMessage.split('\n')[0].substring(0, 60) || "Untitled Group")} ({group.files.length} files)
-                            </span>
-                            <div>
-                                <button onClick={() => handleReviewStagedGroup(group.id)} title="Review/Edit Group" className="secondary-button" style={{fontSize: '10px', padding: '1px 4px', marginRight: '4px'}}>Edit</button>
-                                <button onClick={() => handleUnstageGroup(group.id)} title="Unstage Group" className="secondary-button revert-button" style={{fontSize: '10px', padding: '1px 4px'}}>Unstage</button>
-                            </div>
-                        </div>
-                        <details>
-                            <summary style={{fontSize: '11px', cursor: 'pointer', color: 'var(--vscode-descriptionForeground)'}}>Files in this group</summary>
-                            <ul style={{paddingLeft: '15px', fontSize: '12px', listStyleType: 'disc'}}>
-                                {group.files.map(file => <li key={file} title={file}>{(file.split(/[\\/]/).pop() || file)}</li>)}
-                            </ul>
-                        </details>
-                    </li>
-                ))}
-            </ul>
-        )}
-      </div>
-      <hr />
-
       <div className="changes-section">
         <h2>Available Changes ({availableChangedFiles.length})</h2>
         <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -541,7 +518,58 @@ const App: React.FC = () => {
           </ul>
         )}
       </div>
-       {/* Test button for development, can be removed */}
+      <hr />
+      <div className="staged-changes-section">
+        <h2>
+            Staged Groups ({appState.stagedGroups.length})
+        </h2>
+        {isCommittingAll && <div className="loading-indicator" style={{paddingLeft: '12px'}}>Processing commits...</div>}
+        {commitFeedback.length > 0 && (
+            <div className="commit-feedback-area">
+                {commitFeedback.map(fb => (
+                    <div key={fb.timestamp} className={`feedback-${fb.type}`}>{(fb.type === 'error' ? '❌ ' : fb.type === 'warning' ? '⚠️ ' : 'ℹ️ ')} {fb.message}</div>
+                ))}
+            </div>
+        )}
+        {appState.stagedGroups.length === 0 && !isCommittingAll && (
+            <div className="no-changes-message" style={{padding: '8px 12px'}}>No groups are currently staged.</div>
+        )}
+        {appState.stagedGroups.length > 0 && (
+            <ul className="file-list">
+                {appState.stagedGroups.map(group => (
+                    <li key={group.id} className="staged-group-item" style={{ padding: '4px 12px', borderBottom: '1px solid var(--vscode-sideBar-border)'}}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span title={group.commitMessage} style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1, marginRight: '8px' }}>
+                                {(group.commitMessage.split('\n')[0].substring(0, 60) || "Untitled Group")} ({group.files.length} files)
+                            </span>
+                            <div>
+                                <button onClick={() => handleReviewStagedGroup(group.id)} title="Review/Edit Group" className="secondary-button" style={{fontSize: '10px', padding: '1px 4px', marginRight: '4px'}}>Edit</button>
+                                <button onClick={() => handleUnstageGroup(group.id)} title="Unstage Group" className="secondary-button revert-button" style={{fontSize: '10px', padding: '1px 4px'}}>Unstage</button>
+                            </div>
+                        </div>
+                        <details>
+                            <summary style={{fontSize: '11px', cursor: 'pointer', color: 'var(--vscode-descriptionForeground)'}}>Files in this group</summary>
+                            <ul style={{paddingLeft: '15px', fontSize: '12px', listStyleType: 'disc'}}>
+                                {group.files.map(file => <li key={file} title={file}>{(file.split(/[\\/]/).pop() || file)}</li>)}
+                            </ul>
+                        </details>
+                    </li>
+                ))}
+            </ul>
+        )}
+        {appState.stagedGroups.length > 0 && !isCommittingAll && (
+          <div style={{ padding: '8px 12px', marginTop: '8px', borderTop: '1px solid var(--vscode-sideBar-border)' }}>
+            <button
+              className="primary-button"
+              onClick={handleCommitAllStaged}
+              disabled={isCommittingAll || appState.stagedGroups.length === 0}
+              style={{ width: '100%' }}
+            >
+              {isCommittingAll ? 'Committing...' : `Commit All Staged Groups (${appState.stagedGroups.length})`}
+            </button>
+          </div>
+        )}
+      </div>
        <div style={{ padding: '8px 20px', borderTop: '1px solid var(--vscode-sideBar-border)', marginTop:'10px' }}>
         <button className="secondary-button" onClick={handleClick}>
           Test Increment: {count}
@@ -569,7 +597,7 @@ const App: React.FC = () => {
             {appState.currentGroup?.files.map((file) => (
               <li key={file} className="file-item">
                 <span className="file-name">{(file.split(/[\\/]/).pop() || file)}</span>
-                <div className="file-actions"><button onClick={() => handleViewDiff(file)} title="Diff">⎕</button></div>
+                <div className="file-actions"><button onClick={() => handleViewDiff(file)} title="Diff">Diff</button></div>
               </li>
             ))}
           </ul>
@@ -596,21 +624,17 @@ const App: React.FC = () => {
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               className="primary-button"
-              // --- CORRECTION POINT 2.A START ---
               onClick={handleGenerateNewGroupMessage}
               disabled={appState.currentGroup?.isGenerating || !appState.settings.hasApiKey || (appState.currentGroup?.files.length ?? 0) === 0}
-              // --- CORRECTION POINT 2.A END ---
             >
               {appState.currentGroup?.isGenerating ? <span className="loading-spinner">⟳ Generating...</span> : '🤖 Generate Message'}
             </button>
-            {/* --- CORRECTION POINT 2.B START --- */}
             <button
               className="secondary-button"
               onClick={handleStageCurrentGroup}
               disabled={!appState.currentGroup?.commitMessage?.trim() || (appState.currentGroup?.files.length ?? 0) === 0}
               style={{ fontSize: '13px' }}
             >
-            {/* --- CORRECTION POINT 2.B END --- */}
               Stage Group
             </button>
           </div>
@@ -621,18 +645,10 @@ const App: React.FC = () => {
   );
 
   const renderReviewEditStagedGroupView = () => {
-    // If the necessary data for this view isn't populated yet by the useEffect, show a loading indicator.
-    // The useEffect hook is responsible for populating `editingStagedGroupData` or
-    // navigating away if the state is irrecoverably inconsistent.
     if (!editingStagedGroupData || !appState.currentEditingStagedGroupId) {
         console.log(`[Webview App] renderReviewEditStagedGroupView: Waiting for data or navigating. currentEditingId: ${appState.currentEditingStagedGroupId}, editingDataPopulated: ${!!editingStagedGroupData}`);
-        // It's possible the useEffect is about to navigate away. Showing "Loading..." is safe.
         return <div className="loading-indicator">Loading group details...</div>;
     }
-
-    // Find the original group from appState.stagedGroups for unsaved changes detection.
-    // It's possible originalGroup is undefined if the group was deleted from appState.stagedGroups
-    // after this view was entered but before a re-render. The UI should be robust to this.
     const originalGroup = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
 
     const hasUnsavedChanges = originalGroup && editingStagedGroupData && (
@@ -642,7 +658,7 @@ const App: React.FC = () => {
     );
 
     return (
-        <div className="app-container review-edit-group-view"> {/* Added a class for specific styling if needed */}
+        <div className="app-container review-edit-group-view">
             <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--vscode-sideBar-border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button 
                   className="secondary-button" 
@@ -673,15 +689,15 @@ const App: React.FC = () => {
                     }
                     <ul className="file-list" style={{ marginBottom: '16px', maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--vscode-input-border)' }}>
                         {editingStagedGroupData.files.map((file) => (
-                            <li key={file} className="file-item" style={{padding: '2px 6px'}}> {/* Added slight padding to list items */}
+                            <li key={file} className="file-item" style={{padding: '2px 6px'}}>
                                 <span className="file-name" title={file}>{(file.split(/[\\/]/).pop() || file)}</span>
-                                <div className="file-actions always-visible"> {/* Make actions always visible in edit view */}
+                                <div className="file-actions always-visible">
                                     <button onClick={() => handleViewDiff(file)} title="View Diff for this file">Diff</button>
                                     <button 
                                         onClick={() => handleRemoveFileFromEditingStagedGroup(file)} 
                                         title="Remove from group" 
-                                        className="revert-button" // Uses error color
-                                        style={{fontWeight:'bold', fontSize: '14px'}} // Make cross more prominent
+                                        className="revert-button"
+                                        style={{fontWeight:'bold', fontSize: '14px'}}
                                     >
                                         ✕
                                     </button>
@@ -689,7 +705,6 @@ const App: React.FC = () => {
                             </li>
                         ))}
                     </ul>
-                    {/* Future: Add button/mechanism to add more files from 'availableChangedFiles' to this group */}
                 </div>
 
                  <div className="group-section">
@@ -699,7 +714,7 @@ const App: React.FC = () => {
                         value={editingStagedGroupData.specificContext}
                         onChange={(e) => handleUpdateEditingStagedGroupDataContext(e.target.value)}
                         placeholder="Enter context specific to this group..."
-                        className="general-context-textarea" // Reuse existing style
+                        className="general-context-textarea"
                         rows={3}
                     />
                 </div>
@@ -711,7 +726,7 @@ const App: React.FC = () => {
                         value={editingStagedGroupData.commitMessage}
                         onChange={(e) => handleUpdateEditingStagedGroupDataMessage(e.target.value)}
                         placeholder="Edit commit message..."
-                        className="general-context-textarea" // Reuse existing style
+                        className="general-context-textarea"
                         rows={4}
                         style={{ marginBottom: '12px' }}
                     />
@@ -731,7 +746,7 @@ const App: React.FC = () => {
                                 disabled={
                                     editingStagedGroupData.isGeneratingMessage || 
                                     !editingStagedGroupData.commitMessage.trim() || 
-                                    !hasUnsavedChanges // Only enable if there are actual changes to save
+                                    !hasUnsavedChanges 
                                 }
                                 title={!editingStagedGroupData.commitMessage.trim() ? "Commit message cannot be empty" : !hasUnsavedChanges ? "No changes to save" : "Save changes to this staged group"}
                             >
@@ -740,7 +755,7 @@ const App: React.FC = () => {
                         </div>
                         <button
                             className="secondary-button revert-button"
-                            onClick={() => handleUnstageGroup(appState.currentEditingStagedGroupId!)} // ID is guaranteed by guard clause
+                            onClick={() => handleUnstageGroup(appState.currentEditingStagedGroupId!)}
                             disabled={editingStagedGroupData.isGeneratingMessage}
                             title="Remove this group from staging"
                         >
@@ -774,22 +789,24 @@ const App: React.FC = () => {
           <h3>AI Provider</h3>
           <select id="provider-select" value={settingsForm.provider}
             onChange={(e) => {
-              const newProvider = e.target.value as 'openai' | 'anthropic';
-              const defaultModel = newProvider === 'anthropic' ? 'claude-3-5-haiku-20241022' : 'gpt-4o-mini';
+              const newProvider = e.target.value as LLMProviderWebview;
+              const defaultModel = getDefaultModelForProvider(newProvider);
               setSettingsForm(prev => ({ ...prev, provider: newProvider, model: defaultModel }));
             }}
             style={{ width: '100%', padding: '4px 8px' }}
           >
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic (Claude)</option>
+            <option value="gemini">Google (Gemini)</option>
+            <option value="openrouter">OpenRouter</option>
           </select>
         </div>
         <div className="settings-section">
-          <h3>{settingsForm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key</h3>
+          <h3>{settingsForm.provider.charAt(0).toUpperCase() + settingsForm.provider.slice(1)} API Key</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input id="api-key" type="password" value={settingsForm.apiKey}
               onChange={(e) => setSettingsForm(prev => ({ ...prev, apiKey: e.target.value }))}
-              placeholder={appState.settings.hasApiKey ? "••••••••••••••••" : `Enter your ${settingsForm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key`}
+              placeholder={appState.settings.hasApiKey ? "•••••••••••••••• (Saved)" : `Enter your ${settingsForm.provider.charAt(0).toUpperCase() + settingsForm.provider.slice(1)} API key`}
               style={{ flex: 1 }}
             />
             <button className="primary-button" onClick={handleSaveApiKey} disabled={!settingsForm.apiKey.trim()}>Save</button>
@@ -802,24 +819,44 @@ const App: React.FC = () => {
         <div className="settings-section">
             <h3>Model Configuration</h3>
             <label htmlFor="model-select" style={{display:'block', marginBottom:'2px'}}>Model</label>
-            <select id="model-select" value={settingsForm.model} // Ensure settingsForm.model is valid for current provider
+            <select id="model-select" value={settingsForm.model}
                 onChange={(e) => setSettingsForm(prev => ({ ...prev, model: e.target.value }))}
                 style={{ width: '100%', padding: '4px 8px', marginBottom:'8px' }}
             >
-              {settingsForm.provider === 'anthropic' ? (
-                <>
-                  <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Fast, Good)</option>
-                  <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Better, Slower)</option>
-                  <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                  <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-                  <option value="claude-3-opus-20240229">Claude 3 Opus (Best, Slowest)</option>
-                </>
-              ) : (
+              {settingsForm.provider === 'openai' && (
                 <>
                   <option value="gpt-4o-mini">GPT-4o Mini (Fast, Good)</option>
                   <option value="gpt-4o">GPT-4o (Better, Slower)</option>
                   <option value="gpt-4-turbo">GPT-4 Turbo</option>
                   <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fastest, Basic)</option>
+                </>
+              )}
+              {settingsForm.provider === 'anthropic' && (
+                <>
+                  <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet (Fast, Excellent)</option>
+                  <option value="claude-3-opus-20240229">Claude 3 Opus (Powerful)</option>
+                  <option value="claude-3-sonnet-20240229">Claude 3 Sonnet (Balanced)</option>
+                  <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                </>
+              )}
+              {settingsForm.provider === 'gemini' && (
+                <>
+                  <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Fast, Multimodal)</option>
+                  <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Powerful, Multimodal)</option>
+                  <option value="gemini-pro">Gemini Pro (Older, Text-only)</option>
+                </>
+              )}
+              {settingsForm.provider === 'openrouter' && (
+                <>
+                  <option value="openrouter/auto">OpenRouter Auto (Recommended)</option>
+                  <option value="google/gemini-flash-1.5">Google: Gemini Flash 1.5</option>
+                  <option value="google/gemini-pro-1.5">Google: Gemini Pro 1.5</option>
+                  <option value="openai/gpt-4o-mini">OpenAI: GPT-4o Mini</option>
+                  <option value="openai/gpt-4o">OpenAI: GPT-4o</option>
+                  <option value="anthropic/claude-3.5-sonnet">Anthropic: Claude 3.5 Sonnet</option>
+                  <option value="anthropic/claude-3-haiku">Anthropic: Claude 3 Haiku</option>
+                  <option value="mistralai/mistral-7b-instruct">Mistral: 7B Instruct</option>
+                  <option value="meta-llama/llama-3-8b-instruct">Meta: Llama 3 8B Instruct</option>
                 </>
               )}
             </select>
@@ -847,6 +884,23 @@ const App: React.FC = () => {
             </div>
           <button className="primary-button" onClick={handleSaveInstructions}>Save Instructions</button>
         </div>
+         {settingsForm.provider === 'openrouter' && (
+            <div className="settings-section">
+                <h3>OpenRouter Settings</h3>
+                <label htmlFor="openrouter-referer" style={{display:'block', marginBottom:'2px'}}>HTTP Referer URL (Optional)</label>
+                <input 
+                    id="openrouter-referer" 
+                    type="text" 
+                    value={appState.settings.openRouterRefererUrl || 'http://localhost'}
+                    placeholder="e.g., http://localhost or your extension ID"
+                    disabled 
+                    style={{ width: '100%', marginBottom:'8px' }}
+                />
+                <div className="context-help-text">
+                    Recommended by OpenRouter. Configure this in VS Code settings under "LLM Committer: Open Router Referer Url".
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );
@@ -857,9 +911,7 @@ const App: React.FC = () => {
       {appState.currentView === 'fileselection' && renderFileSelectionView()}
       {appState.currentView === 'group' && renderGroupView()}
       {appState.currentView === 'settings' && renderSettingsView()}
-      {/* --- CORRECTION POINT 4 START --- */}
       {appState.currentView === 'reviewStagedGroup' && renderReviewEditStagedGroupView()}
-      {/* --- CORRECTION POINT 4 END --- */}
     </>
   );
 };
