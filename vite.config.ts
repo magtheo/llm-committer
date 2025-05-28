@@ -7,6 +7,7 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(__dirname, 'webview'), // Tell Vite the root of the webview source files
+  base: './',
   build: {
     outDir: path.resolve(__dirname, 'dist/webview'), // Output to projectRoot/dist/webview
     emptyOutDir: true,
