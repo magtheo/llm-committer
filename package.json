@@ -75,11 +75,15 @@
           "default": "openai",
           "enum": [
             "openai",
-            "anthropic"
+            "anthropic",
+            "gemini",
+            "openrouter"
           ],
           "enumDescriptions": [
             "OpenAI (GPT models)",
-            "Anthropic (Claude models)"
+            "Anthropic (Claude models)",
+            "Google (Gemini models)",
+            "OpenRouter (Various models)"
           ],
           "description": "AI provider to use for generating commit messages."
         },
@@ -106,6 +110,11 @@
           "minimum": 0,
           "maximum": 1,
           "description": "Temperature setting for LLM creativity (0 = consistent, 1 = creative)."
+        },
+        "llmCommitter.openRouterRefererUrl": {
+          "type": "string",
+          "default": "http://localhost",
+          "description": "HTTP Referer URL to use for OpenRouter API calls (optional, but recommended by OpenRouter)."
         }
       }
     }
