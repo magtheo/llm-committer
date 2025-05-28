@@ -1,19 +1,19 @@
-// src/services/StateService.ts - Phase 5+6: Enhanced with Settings State
+// src/services/StateService.ts
 import * as vscode from 'vscode';
+import { LLMProvider } from './ConfigurationService'; // Import the exported type
 
 export interface CurrentGroup {
     files: string[];
     specificContext: string;
     commitMessage?: string;
-    isGenerating?: boolean; // Phase 5+6: Track message generation state
+    isGenerating?: boolean; 
 }
 
 export interface StagedGroup {
-    id: string; // Unique identifier for the group
+    id: string; 
     files: string[];
     specificContext: string;
     commitMessage: string;
-    // Potentially add a timestamp for creation/staging if needed later
 }
 
 export interface AppState {
@@ -25,7 +25,7 @@ export interface AppState {
 
     settings: {
         hasApiKey: boolean;
-        provider: 'openai' | 'anthropic';
+        provider: LLMProvider; // Use the imported type
         model: string;
         maxTokens: number;
         temperature: number;
@@ -36,7 +36,7 @@ export interface AppState {
 }
 
 export class StateService {
-    private context: vscode.ExtensionContext | undefined; // To store workspace state
+    private context: vscode.ExtensionContext | undefined; 
 
     private _state: AppState = {
         changedFiles: [],
@@ -46,24 +46,22 @@ export class StateService {
         generalContext: '',
         settings: {
             hasApiKey: false,
-            provider: 'openai',
-            model: 'gpt-4o-mini',
+            provider: 'openai', // Default provider
+            model: 'gpt-4o-mini', // Default model for the default provider
             maxTokens: 4000,
             temperature: 0.3,
             instructionsLength: 0
         },
         stagedGroups: [],
         currentEditingStagedGroupId: null,
-
     };
 
     private _onStateChanged = new vscode.EventEmitter<AppState>();
     public readonly onStateChanged = this._onStateChanged.event;
 
-    // Call this in activate()
     public initialize(context: vscode.ExtensionContext): void {
         this.context = context;
-        this.loadStagedGroups(); // Load persisted groups on activation
+        this.loadStagedGroups(); 
     }
 
     private generateGroupId(): string {
@@ -71,12 +69,11 @@ export class StateService {
     }
 
     public get state(): AppState {
-        return { ...this._state }; // Return a copy
+        return { ...this._state }; 
     }
 
     public setChangedFiles(files: string[]): void {
         this._state.changedFiles = files;
-        // Clear selected files if they no longer exist in changed files
         this._state.selectedFiles = this._state.selectedFiles.filter(file => 
             files.includes(file)
         );
@@ -89,11 +86,8 @@ export class StateService {
             if (updatedFiles.length !== originalFileCount) {
                 stagedGroupsModified = true;
                 if (updatedFiles.length === 0) {
-                    // If a group becomes empty, we might want to auto-unstage it or notify the user
-                    // For now, let's keep it but log a warning. User can unstage manually.
-                    // Or, alternatively, remove it. Let's remove it for now for simplicity.
                     console.warn(`[StateService] Staged group ${group.id} became empty and will be removed.`);
-                    return null; // Mark for removal
+                    return null; 
                 }
                 return { ...group, files: updatedFiles };
             }
@@ -123,7 +117,6 @@ export class StateService {
     }
 
     public startNewGroup(files: string[]): void {
-
         const filesAlreadyStaged = new Set(this._state.stagedGroups.flatMap(g => g.files));
         const filesForNewGroup = files.filter(f => !filesAlreadyStaged.has(f));
 
@@ -137,20 +130,20 @@ export class StateService {
         }
 
         this._state.currentGroup = {
-            files: [...files],
+            files: [...filesForNewGroup],
             specificContext: '',
             commitMessage: undefined,
             isGenerating: false
         };
         this._state.currentView = 'group';
-        this._state.selectedFiles = []; // Clear selection after creating group
+        this._state.selectedFiles = []; 
         this._onStateChanged.fire({ ...this._state });
     }
 
     public clearCurrentGroup(): void {
         this._state.currentGroup = null;
         this._state.currentView = 'fileselection';
-        this._state.currentEditingStagedGroupId = null; // Clear editing state too
+        this._state.currentEditingStagedGroupId = null; 
         this._onStateChanged.fire({ ...this._state });
     }
 
@@ -171,13 +164,11 @@ export class StateService {
     public setCurrentView(view: AppState['currentView']): void {
         this._state.currentView = view;
         if (view !== 'reviewStagedGroup') {
-            this._state.currentEditingStagedGroupId = null; // Clear editing state if not in review view
+            this._state.currentEditingStagedGroupId = null; 
         }
         this._onStateChanged.fire({ ...this._state });
     }
 
-
-    // General context management
     public setGeneralContext(context: string): void {
         this._state.generalContext = context;
         this._onStateChanged.fire({ ...this._state });
@@ -192,13 +183,8 @@ export class StateService {
             this._state.currentGroup.isGenerating = isGenerating;
             this._onStateChanged.fire({ ...this._state });
         } else if (this._state.currentEditingStagedGroupId) {
-            // Allow generating for a staged group being edited
             const group = this._state.stagedGroups.find(g => g.id === this._state.currentEditingStagedGroupId);
             if (group) {
-                // This needs a temporary state in UI or a different state variable
-                // For now, this won't directly affect isGenerating on the staged group itself
-                // The UI will manage its own loading state for this.
-                // A more robust solution might involve adding `isGenerating` to StagedGroup or AppState for editing.
                 console.log("[StateService] Generating message for staged group (UI should handle indicator)");
             }
         }
@@ -208,7 +194,6 @@ export class StateService {
         return this._state.currentGroup?.isGenerating || false;
     }
 
-    // Phase 5+6: Settings state management
     public updateSettings(settings: Partial<AppState['settings']>): void {
         this._state.settings = { ...this._state.settings, ...settings };
         this._onStateChanged.fire({ ...this._state });
@@ -219,7 +204,9 @@ export class StateService {
     }
 
     public loadStagedGroups(): void {
-        if (!this.context) return;
+        if (!this.context) {
+            return;
+        }
         const persistedGroups = this.context.workspaceState.get<StagedGroup[]>('llmCommitter.stagedGroups');
         if (persistedGroups) {
             this._state.stagedGroups = persistedGroups;
@@ -227,12 +214,12 @@ export class StateService {
         } else {
             this._state.stagedGroups = [];
         }
-        // No fire here, usually called during init before listener is set up or as part of broader update.
-        // If called later, ensure state is fired. For now, activate will load then send initial state.
     }
 
     public persistStagedGroups(): void {
-        if (!this.context) return;
+        if (!this.context) {
+            return;
+        }
         this.context.workspaceState.update('llmCommitter.stagedGroups', this._state.stagedGroups)
             .then(() => console.log('[StateService] Persisted staged groups to workspace state.'),
                   (err) => console.error('[StateService] Error persisting staged groups:', err));
@@ -258,7 +245,7 @@ export class StateService {
 
         this._state.stagedGroups.push(newStagedGroup);
         this.persistStagedGroups();
-        this.clearCurrentGroup(); // This also sets view to fileselection and fires state change
+        this.clearCurrentGroup(); 
         console.log('[StateService] Group staged:', newStagedGroup.id);
         return true;
     }
@@ -270,10 +257,9 @@ export class StateService {
             this.persistStagedGroups();
             console.log('[StateService] Group unstaged:', groupId);
 
-            // If this group was being edited, clear editing state
             if (this._state.currentEditingStagedGroupId === groupId) {
                 this._state.currentEditingStagedGroupId = null;
-                this._state.currentView = 'fileselection'; // Go back to main view
+                this._state.currentView = 'fileselection'; 
             }
             this._onStateChanged.fire({ ...this._state });
             vscode.window.showInformationMessage(`Group "${unstagedGroup.commitMessage.substring(0,20)}..." unstaged.`);
@@ -296,11 +282,9 @@ export class StateService {
         const groupIndex = this._state.stagedGroups.findIndex(g => g.id === groupId);
         if (groupIndex > -1) {
             const group = this._state.stagedGroups[groupIndex];
-            // Ensure files are not empty if provided
             if (updates.files && updates.files.length === 0) {
                 vscode.window.showWarningMessage("A staged group cannot have zero files. Unstage the group instead if you want to remove all files.");
-                // Or, we could auto-unstage it. For now, prevent empty files.
-                delete updates.files; // Don't apply empty files update
+                delete updates.files; 
             }
 
             this._state.stagedGroups[groupIndex] = { ...group, ...updates };
@@ -319,7 +303,6 @@ export class StateService {
             const updatedFiles = group.files.filter(f => f !== filePathToRemove);
 
             if (updatedFiles.length === 0) {
-                // If removing the file makes the group empty, unstage the group.
                 this.unstageGroup(groupId);
                 vscode.window.showInformationMessage(`Group became empty and was unstaged.`);
             } else if (updatedFiles.length < group.files.length) {
@@ -338,8 +321,6 @@ export class StateService {
         if (groupId) {
             this._state.currentView = 'reviewStagedGroup';
         }
-        // If groupId is null, the view should be handled by the caller (e.g., navigate back to fileselection)
         this._onStateChanged.fire({ ...this._state });
     }
-    
 }
