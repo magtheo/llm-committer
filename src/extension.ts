@@ -355,11 +355,11 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
 
             } else {
                 const errorMsg = result.error || 'Unknown error during generation';
-                vscode.window.showErrorMessage(`❌ Failed to generate commit message: ${errorMsg}`);
+                vscode.window.showErrorMessage(`Failed to generate commit message: ${errorMsg}`);
             }
 
         } catch (error) {
-            vscode.window.showErrorMessage(`❌ Error generating commit message: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(`Error generating commit message: ${(error as Error).message}`);
         } finally {
             if (stagedGroupIdForUpdate) {
                  if (this._view) {
