@@ -1,5 +1,5 @@
 // webview/App.tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './App.css';
 
 const vscode = (window as any).acquireVsCodeApi();
@@ -90,6 +90,8 @@ const App: React.FC = () => {
   const [commitFeedback, setCommitFeedback] = useState<CommitOperationFeedback[]>([]);
   const [isCommittingAll, setIsCommittingAll] = useState(false);
   const [editingStagedGroupData, setEditingStagedGroupData] = useState<EditingStagedGroupState | null>(null);
+  const lastSyncedGroupDataRef = useRef<StagedGroup | null>(null);
+  const [originalStagedGroupForEdit, setOriginalStagedGroupForEdit] = useState<StagedGroup | null>(null);
 
   const getDefaultModelForProvider = (provider: LLMProviderWebview): string => {
     switch (provider) {
@@ -126,47 +128,104 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (appState.currentView === 'settings') {
-      console.log('[Webview App] currentView is settings, requesting settings...');
-      vscode.postMessage({ command: 'getSettings' });
-    } else if (appState.currentView === 'reviewStagedGroup') {
-      console.log('[Webview App] currentView is reviewStagedGroup, currentEditingId:', appState.currentEditingStagedGroupId);
+    if (appState.currentView === 'reviewStagedGroup') {
+      console.log('[Webview App] REVIEW VIEW - ID:', appState.currentEditingStagedGroupId);
       if (appState.currentEditingStagedGroupId) {
-        const groupToEdit = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
-        console.log('[Webview App] Found groupToEdit for review:', groupToEdit);
-        if (groupToEdit) {
-          if (!editingStagedGroupData || 
-              editingStagedGroupData.commitMessage !== groupToEdit.commitMessage || 
-              editingStagedGroupData.specificContext !== groupToEdit.specificContext ||
-              JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(groupToEdit.files.slice().sort())
-             ) {
-            console.log('[Webview App] Initializing/Updating editingStagedGroupData for:', groupToEdit.id);
+        const groupFromAppState = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
+        console.log('[Webview App] REVIEW VIEW - Group from AppState:', groupFromAppState);
+  
+        if (groupFromAppState) {
+          // Scenario 1: New group selected for editing, or no original baseline exists for this group.
+          // Initialize both the form (editingStagedGroupData) and the baseline (originalStagedGroupForEdit).
+          if (!originalStagedGroupForEdit || originalStagedGroupForEdit.id !== appState.currentEditingStagedGroupId) {
+            console.log('[Webview App] REVIEW VIEW - Initializing NEW edit session for group:', groupFromAppState.id);
             setEditingStagedGroupData({
-              specificContext: groupToEdit.specificContext,
-              commitMessage: groupToEdit.commitMessage,
-              files: [...groupToEdit.files], 
-              isGeneratingMessage: false, 
+              specificContext: groupFromAppState.specificContext,
+              commitMessage: groupFromAppState.commitMessage,
+              files: [...groupFromAppState.files],
+              isGeneratingMessage: false, // Reset this local UI flag
             });
+            setOriginalStagedGroupForEdit({ ...groupFromAppState }); // Capture new baseline
           } else {
-            console.log('[Webview App] editingStagedGroupData is already up-to-date for:', groupToEdit.id);
+            // Scenario 2: Already editing this group (originalStagedGroupForEdit.id matches).
+            // Now, check if the group's data in appState has changed since we last looked
+            // (e.g., due to an LLM regeneration that updated appState.stagedGroups).
+            // We compare groupFromAppState (current truth in appState) with originalStagedGroupForEdit (our initial snapshot).
+            // We also need to consider what's currently in the form (editingStagedGroupData).
+  
+            let updatedFormData = { ...editingStagedGroupData! }; // Start with current form data
+            let formDidChange = false;
+  
+            // Sync commit message:
+            // If appState's message is different from original baseline's message
+            // AND appState's message is also different from what's currently in the form
+            // (to avoid overwriting a manual edit if appState hasn't caught up to an LLM regen yet,
+            // or to update form if appState reflects an LLM regen the form hasn't seen).
+            if (groupFromAppState.commitMessage !== originalStagedGroupForEdit.commitMessage &&
+                groupFromAppState.commitMessage !== editingStagedGroupData!.commitMessage) {
+              console.log('[Webview App] REVIEW VIEW - Syncing COMMIT MESSAGE from appState to form for group:', groupFromAppState.id);
+              updatedFormData.commitMessage = groupFromAppState.commitMessage;
+              formDidChange = true;
+            }
+  
+            // Sync files:
+            // If appState's files are different from original baseline's files
+            // AND appState's files are also different from what's currently in the form.
+            const appStateFilesSorted = JSON.stringify(groupFromAppState.files.slice().sort());
+            const originalFilesSorted = JSON.stringify(originalStagedGroupForEdit.files.slice().sort());
+            const formFilesSorted = JSON.stringify(editingStagedGroupData!.files.slice().sort());
+  
+            if (appStateFilesSorted !== originalFilesSorted && appStateFilesSorted !== formFilesSorted) {
+              console.log('[Webview App] REVIEW VIEW - Syncing FILES from appState to form for group:', groupFromAppState.id);
+              updatedFormData.files = [...groupFromAppState.files];
+              formDidChange = true;
+            }
+            
+            // Sync specific context (if it can change externally, less common for this field):
+            // if (groupFromAppState.specificContext !== originalStagedGroupForEdit.specificContext &&
+            //     groupFromAppState.specificContext !== editingStagedGroupData!.specificContext) {
+            //   console.log('[Webview App] REVIEW VIEW - Syncing CONTEXT from appState to form for group:', groupFromAppState.id);
+            //   updatedFormData.specificContext = groupFromAppState.specificContext;
+            //   formDidChange = true;
+            // }
+  
+            if (formDidChange) {
+              setEditingStagedGroupData(updatedFormData);
+            } else {
+              console.log('[Webview App] REVIEW VIEW - Continuing edit, form up-to-date or has local edits not yet reflected in appState for group:', groupFromAppState.id);
+            }
           }
         } else {
-          console.warn(`[Webview App] In reviewStagedGroup view, but group ID ${appState.currentEditingStagedGroupId} not found in stagedGroups. Navigating back.`);
-          handleNavigateToView('fileselection'); 
+          // Group not found in appState, navigate away and clear states.
+          console.warn(`[Webview App] REVIEW VIEW - Group ID ${appState.currentEditingStagedGroupId} not found in appState. Navigating back.`);
+          setEditingStagedGroupData(null);
+          setOriginalStagedGroupForEdit(null);
+          handleNavigateToView('fileselection');
         }
       } else {
-        console.warn("[Webview App] In reviewStagedGroup view but no currentEditingStagedGroupId. Navigating back.");
-        handleNavigateToView('fileselection'); 
+        // No currentEditingStagedGroupId, clear edit states if they exist.
+        if (editingStagedGroupData) setEditingStagedGroupData(null);
+        if (originalStagedGroupForEdit) setOriginalStagedGroupForEdit(null);
       }
-    } else { 
-      if (editingStagedGroupData !== null) {
-        console.log(`[Webview App] currentView is ${appState.currentView}, clearing editingStagedGroupData.`);
+    } else {
+      // Not in 'reviewStagedGroup' view. Clear edit-specific states.
+      if (editingStagedGroupData) {
+        console.log(`[Webview App] Leaving review view. Clearing editingStagedGroupData.`);
         setEditingStagedGroupData(null);
       }
+      if (originalStagedGroupForEdit) {
+        console.log(`[Webview App] Leaving review view. Clearing originalStagedGroupForEdit.`);
+        setOriginalStagedGroupForEdit(null);
+      }
     }
-  }, [appState.currentView, appState.currentEditingStagedGroupId, appState.stagedGroups]); 
-  
+  }, [appState.currentView, appState.currentEditingStagedGroupId, appState.stagedGroups]);
+  // IMPORTANT: `editingStagedGroupData` and `originalStagedGroupForEdit` are deliberately
+  // NOT in this dependency array. This effect is meant to *derive* their values from
+  // appState and view logic, not react to their own changes.
+  // Reacting to their own changes here would create complex update loops.
+  // The current state of `editingStagedGroupData` is accessed directly inside the effect when needed.
 
+  
   useEffect(() => {
     const messageListener = (event: MessageEvent) => {
       const message = event.data;
@@ -651,11 +710,19 @@ const App: React.FC = () => {
     }
     const originalGroup = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
 
-    const hasUnsavedChanges = originalGroup && editingStagedGroupData && (
-        editingStagedGroupData.commitMessage !== originalGroup.commitMessage ||
-        editingStagedGroupData.specificContext !== originalGroup.specificContext ||
-        JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(originalGroup.files.slice().sort())
+    const baselineGroupForComparison = originalStagedGroupForEdit;
+
+    const hasUnsavedChanges = baselineGroupForComparison && editingStagedGroupData && (
+        editingStagedGroupData.commitMessage !== baselineGroupForComparison.commitMessage ||
+        editingStagedGroupData.specificContext !== baselineGroupForComparison.specificContext ||
+        JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(baselineGroupForComparison.files.slice().sort())
     );
+
+    // const hasUnsavedChanges = originalGroup && editingStagedGroupData && (
+    //     editingStagedGroupData.commitMessage !== originalGroup.commitMessage ||
+    //     editingStagedGroupData.specificContext !== originalGroup.specificContext ||
+    //     JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(originalGroup.files.slice().sort())
+    // );
 
     return (
         <div className="app-container review-edit-group-view">
