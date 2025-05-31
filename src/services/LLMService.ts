@@ -104,11 +104,11 @@ export class LLMService {
 
     private buildPrompt(request: GenerateMessageRequest, instructions: string): string {
         const parts = [instructions, ''];
-        if (request.generalContext.trim()) {
-            parts.push(`General Project Context: ${request.generalContext.trim()}`, '');
+        if (request.generalContext && request.generalContext.trim()) { // Added check for non-empty
+            parts.push(`General Project Context:\n${request.generalContext.trim()}`, '');
         }
-        if (request.groupContext.trim()) {
-            parts.push(`Specific Context for This Change: ${request.groupContext.trim()}`, '');
+        if (request.groupContext && request.groupContext.trim()) { // Added check for non-empty
+            parts.push(`Specific Context for This Change:\n${request.groupContext.trim()}`, '');
         }
         if (request.fileDiffs.length > 0) {
             parts.push('Files and Changes:', '');
@@ -117,7 +117,25 @@ export class LLMService {
             });
         }
         parts.push('Based on the above context and changes, generate a single, concise Git commit message:');
-        return parts.join('\n');
+        
+        const finalPrompt = parts.join('\n');
+    
+        // --- BEGIN DIAGNOSTIC LOGGING ---
+        console.log("--- LLM PROMPT BEING SENT ---");
+        console.log("Instructions Length:", instructions.length);
+        console.log("General Context:", request.generalContext);
+        console.log("Group Context:", request.groupContext);
+        console.log("File Diffs Count:", request.fileDiffs.length);
+        request.fileDiffs.forEach((fd, index) => {
+            console.log(`File Diff ${index + 1} Path: ${fd.filePath}`);
+            // console.log(`File Diff ${index + 1} Content:\n${fd.content.substring(0, 200)}...`); // Log snippet of diff
+        });
+        // For very detailed debugging of the prompt itself:
+        // console.log("Full Prompt:\n", finalPrompt);
+        console.log("--- END LLM PROMPT DIAGNOSTICS ---");
+        // --- END DIAGNOSTIC LOGGING ---
+    
+        return finalPrompt;
     }
 
     private async callOpenAI(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {

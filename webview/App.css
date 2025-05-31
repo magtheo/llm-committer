@@ -1,4 +1,4 @@
-/* webview/App.css - Includes Phase 7 Styles */
+/* webview/App.css - Includes Phase 7 Styles & Output Channel Adjustments */
 
 body {
   font-family: var(--vscode-font-family);
@@ -167,7 +167,6 @@ select {
   min-height: 22px;
   cursor: default; /* Default, can be pointer if whole item is clickable */
   border: none; /* Remove individual item borders */
-  /* border-bottom: 1px solid var(--vscode-tree-tableColumnsBorder, var(--vscode-editorGroup-border)); */ /* Subtle separator */
 }
 .file-item:last-child {
     border-bottom: none;
@@ -194,10 +193,10 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--vscode-foreground); /* Ensure this is not overridden by .selected color if name shouldn't change */
+  color: var(--vscode-foreground);
 }
 .file-item.selected .file-name {
-    color: var(--vscode-list-activeSelectionForeground); /* Ensure text color changes on selection */
+    color: var(--vscode-list-activeSelectionForeground);
 }
 
 
@@ -205,11 +204,11 @@ select {
   display: flex;
   align-items: center;
   padding-right: 8px;
-  opacity: 0; /* Hidden by default, show on hover */
+  opacity: 0; 
   transition: opacity 0.1s ease-in-out;
 }
 .file-item:hover .file-actions,
-.file-item .file-actions.always-visible { /* Add class if actions should sometimes be always visible */
+.file-item .file-actions.always-visible {
   opacity: 1;
 }
 
@@ -219,10 +218,10 @@ select {
   color: var(--vscode-icon-foreground);
   padding: 2px 4px;
   margin: 0 1px;
-  border-radius: 3px; /* Slightly more rounded */
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 11px; /* Can be adjusted */
-  min-width: 20px; /* For better click target */
+  font-size: 11px;
+  min-width: 20px;
   height: 20px;
   display: flex;
   align-items: center;
@@ -237,10 +236,9 @@ select {
 }
 
 
-/* VS Code standard button styling */
 button.primary-button, button.secondary-button {
   border: 1px solid var(--vscode-button-border, transparent);
-  padding: 4px 12px; /* Slightly more padding */
+  padding: 4px 12px;
   font-size: 13px;
   font-family: inherit;
   border-radius: 2px;
@@ -263,7 +261,7 @@ button.secondary-button:hover:not(:disabled) {
   background-color: var(--vscode-button-secondaryHoverBackground);
 }
 button:disabled {
-  opacity: 0.5; /* More pronounced disabled state */
+  opacity: 0.5;
   cursor: not-allowed;
 }
 button:focus {
@@ -271,7 +269,7 @@ button:focus {
   outline-offset: 2px;
 }
 
-/* Input styling */
+
 input[type="text"], input[type="password"], textarea {
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
@@ -280,7 +278,7 @@ input[type="text"], input[type="password"], textarea {
   font-size: 13px;
   font-family: inherit;
   border-radius: 2px;
-  width: 100%; /* Default to full width */
+  width: 100%;
   box-sizing: border-box;
 }
 input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
@@ -288,44 +286,43 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
   border-color: var(--vscode-focusBorder);
 }
 textarea {
-  min-height: 60px; /* Default min height for textareas */
+  min-height: 60px;
   resize: vertical;
 }
 input::placeholder, textarea::placeholder {
   color: var(--vscode-input-placeholderForeground);
 }
 
-/* Checkbox styling */
+
 input[type="checkbox"] {
   width: 16px;
   height: 16px;
   padding: 0;
-  margin: 0; /* Reset margin, control with flexbox gap or parent padding */
+  margin: 0;
   border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border));
   background-color: var(--vscode-checkbox-background, var(--vscode-input-background));
-  border-radius: 3px; /* Slightly more rounded */
+  border-radius: 3px;
   cursor: pointer;
-  vertical-align: middle; /* Align better with text */
+  vertical-align: middle;
 }
 input[type="checkbox"]:checked {
   background-color: var(--vscode-checkbox-selectBackground, var(--vscode-button-background));
   border-color: var(--vscode-checkbox-selectBorder, var(--vscode-button-background));
-  /* Add a checkmark using pseudo-element or background image if needed, VSCode usually handles this */
 }
 input[type="checkbox"]:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 
-/* Loading states */
+
 .loading-indicator {
-  color: var(--vscode-descriptionForeground); /* Use description for less prominent loading text */
+  color: var(--vscode-descriptionForeground);
   font-size: 13px;
-  padding: 8px 12px; /* Consistent with section padding */
+  padding: 8px 12px;
   font-style: italic;
 }
 
-/* No changes message styling */
+
 .no-changes-message {
   padding: 8px 12px;
   color: var(--vscode-descriptionForeground);
@@ -333,7 +330,7 @@ input[type="checkbox"]:focus {
   font-style: italic;
 }
 
-/* Group view specific styling (for new group and review/edit group) */
+
 .group-content {
   padding: 12px;
 }
@@ -343,23 +340,22 @@ input[type="checkbox"]:focus {
 .group-section:last-child {
   margin-bottom: 0;
 }
-.group-section > label { /* Labels within group sections */
+.group-section > label {
   display: block;
   font-size: 11px;
   font-weight: 600;
-  /* text-transform: uppercase; */ /* Optional for labels */
-  color: var(--vscode-foreground); /* Standard text color for labels */
+  color: var(--vscode-foreground);
   margin: 0 0 6px 0;
 }
 
-/* Dividers/separators */
+
 hr {
   border: none;
-  border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border)); /* Use a common border color */
-  margin: 0; /* Reset margin, control spacing with parent padding/margin */
+  border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+  margin: 0;
 }
 
-/* Scrollbar styling (already present in previous CSS, ensure it's there) */
+
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-track { background: var(--vscode-scrollbar-shadow); }
 ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 5px; border: 2px solid var(--vscode-sideBar-background); }
@@ -367,19 +363,15 @@ hr {
 ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground); }
 
 
-/* --- BEGIN PHASE 7 STYLES --- */
-
 .staged-changes-section {
     /* Uses common h2 style */
 }
 
 .staged-group-item {
-    /* padding is set inline in App.tsx for now */
-    /* border-bottom: 1px solid var(--vscode-sideBar-border); -> also inline */
-    /* No specific styles needed if structure is simple li > div > (span, div > buttons) */
+    /* Basic item styling, most is inline or via child elements */
 }
 .staged-group-item:last-child {
-    border-bottom: none; /* If border is applied to items */
+    border-bottom: none;
 }
 
 .staged-group-item details > summary {
@@ -387,39 +379,39 @@ hr {
     cursor: pointer;
     color: var(--vscode-descriptionForeground);
     padding: 2px 0;
-    outline: none; /* Remove focus outline from summary itself */
+    outline: none;
 }
 .staged-group-item details > summary:hover {
     color: var(--vscode-foreground);
 }
-.staged-group-item details > summary::marker { /* Style the disclosure triangle */
+.staged-group-item details > summary::marker {
     color: var(--vscode-icon-foreground);
 }
 
 .staged-group-item details ul {
-    padding-left: 20px; /* Indent file list under details, more than default */
+    padding-left: 20px;
     font-size: 12px;
-    list-style-type: none; /* No bullets for cleaner look */
+    list-style-type: none;
     margin: 4px 0;
 }
 .staged-group-item details ul li {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 1px 0; /* Small padding for list items */
-    color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); /* Color for files in staged group */
+    padding: 1px 0;
+    color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground));
 }
 
-
+/* Removed .commit-feedback-area and its child styles as it's no longer used for verbose logs */
+/*
 .commit-feedback-area {
-    padding: 8px 12px; /* Consistent padding */
+    padding: 8px 12px;
     font-size: 11px;
     max-height: 100px;
     overflow-y: auto;
-    /* border-bottom: 1px solid var(--vscode-sideBar-border); */ /* May not need border if hr is used */
     margin-bottom: 8px;
 }
-.commit-feedback-area div { /* Each feedback message */
+.commit-feedback-area div {
     padding: 2px 0;
 }
 .commit-feedback-area .feedback-info {
@@ -432,9 +424,31 @@ hr {
 .commit-feedback-area .feedback-warning {
     color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
 }
+*/
+
+/* New styles for the commit summary area */
+.commit-summary {
+    padding: 8px 12px;
+    font-size: 11px; /* Keep it consistent with other small text */
+    margin-bottom: 8px;
+    border-radius: 3px; /* Match other rounded elements */
+    border: 1px solid transparent; /* Base border */
+    line-height: 1.4;
+}
+.commit-summary.feedback-info {
+    background-color: var(--vscode-notifications-background, var(--vscode-input-background));
+    color: var(--vscode-notifications-foreground, var(--vscode-input-foreground));
+    border-color: var(--vscode-notifications-border, var(--vscode-input-border));
+}
+.commit-summary.feedback-error {
+    background-color: var(--vscode-inputValidation-errorBackground, var(--vscode-statusBarItem-errorBackground));
+    color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+    border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+    font-weight: normal; /* Keep normal weight unless specifically desired bold */
+}
 
 
-.context-preview { /* For displaying general context in group views */
+.context-preview {
     padding: 6px 8px;
     background-color: var(--vscode-textBlockQuote-background, var(--vscode-input-background));
     border: 1px solid var(--vscode-textBlockQuote-border, var(--vscode-input-border));
@@ -443,41 +457,38 @@ hr {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     margin-top: 4px;
-    max-height: 60px; /* Limit height */
-    overflow-y: auto; /* Allow scroll if context is long */
+    max-height: 60px;
+    overflow-y: auto;
     white-space: pre-wrap;
-    word-break: break-word; /* Break long words */
+    word-break: break-word;
 }
 
-/* Destructive action button styling */
+
 .revert-button, button.revert-button {
   color: var(--vscode-errorForeground) !important;
-  /* background-color: transparent !important; */ /* Ensure background is transparent initially if it's a secondary-style button */
 }
 .revert-button:hover, button.revert-button:hover {
-  background-color: var(--vscode-statusBarItem-errorBackground, rgba(200, 50, 50, 0.2)) !important; /* Use a distinct error hover */
+  background-color: var(--vscode-statusBarItem-errorBackground, rgba(200, 50, 50, 0.2)) !important;
   color: var(--vscode-errorForeground) !important;
 }
-.file-actions button.revert-button { /* For small icon buttons like 'discard' or 'remove from group' */
-    font-weight: bold; /* Make icons like ↶ or ✕ more visible */
+.file-actions button.revert-button {
+    font-weight: bold;
 }
 
 
-/* Loading spinner animation */
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 .loading-spinner {
   display: inline-block;
-  animation: spin 0.8s linear infinite; /* Faster spin */
-  margin-right: 4px; /* Space from text if used inline */
-  line-height: 1; /* Prevent extra space */
-  vertical-align: middle; /* Align with text */
+  animation: spin 0.8s linear infinite;
+  margin-right: 4px;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 
-/* Warning/Error states text (can be used with icons) */
 .warning-state {
   color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
   font-size: 11px;
@@ -489,18 +500,15 @@ hr {
   margin-top: 4px;
 }
 
-/* Specific to review/edit view */
-.review-edit-group-view .file-list { /* If needed to override default file-list for this view */
-    max-height: 150px; /* Example: different max height */
+
+.review-edit-group-view .file-list {
+    max-height: 150px;
 }
 
-/* Unsaved changes indicator */
-/* This is usually handled by text, but if a specific class is needed: */
+
 .unsaved-indicator {
     font-size: 10px;
     color: var(--vscode-editorWarning-foreground);
     font-style: italic;
     margin-left: 8px;
 }
-
-/* --- END PHASE 7 STYLES --- */

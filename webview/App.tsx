@@ -27,7 +27,7 @@ interface WebviewSettings {
     maxTokens: number;
     temperature: number;
     instructionsLength: number;
-    openRouterRefererUrl?: string; // <-- ADD THIS LINE
+    openRouterRefererUrl?: string;
 }
 interface AppState {
     changedFiles: string[];
@@ -40,16 +40,12 @@ interface AppState {
     currentEditingStagedGroupId: string | null;
 }
 
-interface CommitOperationFeedback {
-  message: string;
-  type: 'info' | 'error' | 'warning';
-  timestamp: number;
-}
+// Removed CommitOperationFeedback interface as we're changing how feedback is displayed
 
 interface EditingStagedGroupState {
   specificContext: string;
   commitMessage: string;
-  files: string[]; // Keep a local copy of files for editing
+  files: string[];
   isGeneratingMessage: boolean;
 }
 
@@ -70,7 +66,7 @@ const App: React.FC = () => {
         maxTokens: 4000,
         temperature: 0.3,
         instructionsLength: 0,
-        openRouterRefererUrl: 'http://localhost', // Initialize with a default or undefined
+        openRouterRefererUrl: 'http://localhost',
     },
     stagedGroups: [],
     currentEditingStagedGroupId: null,
@@ -84,13 +80,14 @@ const App: React.FC = () => {
     model: 'gpt-4o-mini',
     maxTokens: 4000,
     temperature: 0.3
-    // No need for openRouterRefererUrl here as it's not directly editable in this form
   });
 
-  const [commitFeedback, setCommitFeedback] = useState<CommitOperationFeedback[]>([]);
+  // State for commit operation summary
   const [isCommittingAll, setIsCommittingAll] = useState(false);
+  const [commitSummary, setCommitSummary] = useState<string | null>(null);
+  const [lastCommitError, setLastCommitError] = useState<string | null>(null);
+
   const [editingStagedGroupData, setEditingStagedGroupData] = useState<EditingStagedGroupState | null>(null);
-  const lastSyncedGroupDataRef = useRef<StagedGroup | null>(null);
   const [originalStagedGroupForEdit, setOriginalStagedGroupForEdit] = useState<StagedGroup | null>(null);
 
   const getDefaultModelForProvider = (provider: LLMProviderWebview): string => {
@@ -103,7 +100,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Effect to update settingsForm.provider and settingsForm.model when appState.settings change
   useEffect(() => {
     setSettingsForm(prev => ({
         ...prev,
@@ -119,7 +115,6 @@ const App: React.FC = () => {
       clearTimeout(debounceTimeout.current);
     }
     debounceTimeout.current = setTimeout(() => {
-      console.log('[Webview App] Sending debounced general context update');
       vscode.postMessage({
         command: 'updateGeneralContext',
         payload: { context: context }
@@ -129,110 +124,57 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (appState.currentView === 'reviewStagedGroup') {
-      console.log('[Webview App] REVIEW VIEW - ID:', appState.currentEditingStagedGroupId);
       if (appState.currentEditingStagedGroupId) {
         const groupFromAppState = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
-        console.log('[Webview App] REVIEW VIEW - Group from AppState:', groupFromAppState);
-  
         if (groupFromAppState) {
-          // Scenario 1: New group selected for editing, or no original baseline exists for this group.
-          // Initialize both the form (editingStagedGroupData) and the baseline (originalStagedGroupForEdit).
           if (!originalStagedGroupForEdit || originalStagedGroupForEdit.id !== appState.currentEditingStagedGroupId) {
-            console.log('[Webview App] REVIEW VIEW - Initializing NEW edit session for group:', groupFromAppState.id);
             setEditingStagedGroupData({
               specificContext: groupFromAppState.specificContext,
               commitMessage: groupFromAppState.commitMessage,
               files: [...groupFromAppState.files],
-              isGeneratingMessage: false, // Reset this local UI flag
+              isGeneratingMessage: false,
             });
-            setOriginalStagedGroupForEdit({ ...groupFromAppState }); // Capture new baseline
+            setOriginalStagedGroupForEdit({ ...groupFromAppState });
           } else {
-            // Scenario 2: Already editing this group (originalStagedGroupForEdit.id matches).
-            // Now, check if the group's data in appState has changed since we last looked
-            // (e.g., due to an LLM regeneration that updated appState.stagedGroups).
-            // We compare groupFromAppState (current truth in appState) with originalStagedGroupForEdit (our initial snapshot).
-            // We also need to consider what's currently in the form (editingStagedGroupData).
-  
-            let updatedFormData = { ...editingStagedGroupData! }; // Start with current form data
+            let updatedFormData = { ...editingStagedGroupData! };
             let formDidChange = false;
-  
-            // Sync commit message:
-            // If appState's message is different from original baseline's message
-            // AND appState's message is also different from what's currently in the form
-            // (to avoid overwriting a manual edit if appState hasn't caught up to an LLM regen yet,
-            // or to update form if appState reflects an LLM regen the form hasn't seen).
             if (groupFromAppState.commitMessage !== originalStagedGroupForEdit.commitMessage &&
                 groupFromAppState.commitMessage !== editingStagedGroupData!.commitMessage) {
-              console.log('[Webview App] REVIEW VIEW - Syncing COMMIT MESSAGE from appState to form for group:', groupFromAppState.id);
               updatedFormData.commitMessage = groupFromAppState.commitMessage;
               formDidChange = true;
             }
-  
-            // Sync files:
-            // If appState's files are different from original baseline's files
-            // AND appState's files are also different from what's currently in the form.
             const appStateFilesSorted = JSON.stringify(groupFromAppState.files.slice().sort());
             const originalFilesSorted = JSON.stringify(originalStagedGroupForEdit.files.slice().sort());
             const formFilesSorted = JSON.stringify(editingStagedGroupData!.files.slice().sort());
-  
             if (appStateFilesSorted !== originalFilesSorted && appStateFilesSorted !== formFilesSorted) {
-              console.log('[Webview App] REVIEW VIEW - Syncing FILES from appState to form for group:', groupFromAppState.id);
               updatedFormData.files = [...groupFromAppState.files];
               formDidChange = true;
             }
-            
-            // Sync specific context (if it can change externally, less common for this field):
-            // if (groupFromAppState.specificContext !== originalStagedGroupForEdit.specificContext &&
-            //     groupFromAppState.specificContext !== editingStagedGroupData!.specificContext) {
-            //   console.log('[Webview App] REVIEW VIEW - Syncing CONTEXT from appState to form for group:', groupFromAppState.id);
-            //   updatedFormData.specificContext = groupFromAppState.specificContext;
-            //   formDidChange = true;
-            // }
-  
             if (formDidChange) {
               setEditingStagedGroupData(updatedFormData);
-            } else {
-              console.log('[Webview App] REVIEW VIEW - Continuing edit, form up-to-date or has local edits not yet reflected in appState for group:', groupFromAppState.id);
             }
           }
         } else {
-          // Group not found in appState, navigate away and clear states.
-          console.warn(`[Webview App] REVIEW VIEW - Group ID ${appState.currentEditingStagedGroupId} not found in appState. Navigating back.`);
           setEditingStagedGroupData(null);
           setOriginalStagedGroupForEdit(null);
           handleNavigateToView('fileselection');
         }
       } else {
-        // No currentEditingStagedGroupId, clear edit states if they exist.
         if (editingStagedGroupData) setEditingStagedGroupData(null);
         if (originalStagedGroupForEdit) setOriginalStagedGroupForEdit(null);
       }
     } else {
-      // Not in 'reviewStagedGroup' view. Clear edit-specific states.
-      if (editingStagedGroupData) {
-        console.log(`[Webview App] Leaving review view. Clearing editingStagedGroupData.`);
-        setEditingStagedGroupData(null);
-      }
-      if (originalStagedGroupForEdit) {
-        console.log(`[Webview App] Leaving review view. Clearing originalStagedGroupForEdit.`);
-        setOriginalStagedGroupForEdit(null);
-      }
+      if (editingStagedGroupData) setEditingStagedGroupData(null);
+      if (originalStagedGroupForEdit) setOriginalStagedGroupForEdit(null);
     }
   }, [appState.currentView, appState.currentEditingStagedGroupId, appState.stagedGroups]);
-  // IMPORTANT: `editingStagedGroupData` and `originalStagedGroupForEdit` are deliberately
-  // NOT in this dependency array. This effect is meant to *derive* their values from
-  // appState and view logic, not react to their own changes.
-  // Reacting to their own changes here would create complex update loops.
-  // The current state of `editingStagedGroupData` is accessed directly inside the effect when needed.
-
   
   useEffect(() => {
     const messageListener = (event: MessageEvent) => {
       const message = event.data;
-      console.log('[Webview App] Received message:', message.command, message.payload);
+      // console.log('[Webview App] Received message:', message.command, message.payload); // Keep for debugging if needed
       switch (message.command) {
         case 'stateUpdate':
-          // Ensure all parts of settings are updated, including openRouterRefererUrl
           const newSettingsPayload = message.payload.settings
             ? {
                 ...message.payload.settings,
@@ -243,7 +185,7 @@ const App: React.FC = () => {
           setAppState(prevAppState => ({
             ...prevAppState,
             ...message.payload,
-            settings: newSettingsPayload, // Use the merged settings
+            settings: newSettingsPayload,
           }));
           setIsLoadingFiles(false);
           
@@ -266,19 +208,35 @@ const App: React.FC = () => {
             }));
           }
           break;
-        case 'commitOperationFeedback':
-            setCommitFeedback(prev => [...prev, { ...message.payload, timestamp: Date.now() }].slice(-5));
-            break;
+        // Removed 'commitOperationFeedback' case, as verbose feedback is now in Output Channel
         case 'commitOperationStart':
             setIsCommittingAll(true);
-            setCommitFeedback([]);
+            setCommitSummary(null); // Clear previous summary
+            setLastCommitError(null); // Clear previous error
             break;
         case 'commitOperationEnd':
             setIsCommittingAll(false);
+            const { successCount, failureCount } = message.payload;
+            if (failureCount === 0 && successCount > 0) {
+                setCommitSummary(`${successCount} group(s) committed successfully.`);
+                setLastCommitError(null);
+            } else if (failureCount > 0) {
+                setCommitSummary(`${successCount} succeeded, ${failureCount} failed.`);
+                // Error details are in Output Channel, webview can just note failure.
+                // We could also pass the first error message here if desired.
+                // For now, keeping it simple.
+                setLastCommitError("One or more groups failed to commit. Check Output > LLM Committer for details.");
+            } else if (successCount === 0 && failureCount === 0) { // e.g. cancelled or no groups
+                setCommitSummary("Commit operation completed or cancelled.");
+                setLastCommitError(null);
+            } else {
+                 setCommitSummary("Commit operation finished.");
+                 setLastCommitError(null);
+            }
             break;
-        case 'commitGroupSuccess':
-            break;
-        case 'commitGroupFailed':
+        case 'commitGroupFailed': // Individual group failure
+            // This could update lastCommitError if you want the webview to show the latest specific error
+            setLastCommitError(`Error on group: ${message.payload.error || 'Unknown error'}`);
             break;
         case 'generatingStagedGroupMessage':
             if (editingStagedGroupData && message.payload.groupId === appState.currentEditingStagedGroupId) {
@@ -296,7 +254,7 @@ const App: React.FC = () => {
         clearTimeout(debounceTimeout.current);
       }
     };
-  }, [editingStagedGroupData, appState.currentEditingStagedGroupId, appState.settings.openRouterRefererUrl]); // Added dependency
+  }, [editingStagedGroupData, appState.currentEditingStagedGroupId, appState.settings.openRouterRefererUrl]);
 
   const handleClick = () => {
     setCount(prevCount => prevCount + 1);
@@ -308,6 +266,8 @@ const App: React.FC = () => {
 
   const handleRefreshChanges = () => {
     setIsLoadingFiles(true);
+    setCommitSummary(null); // Clear summary on refresh
+    setLastCommitError(null);
     vscode.postMessage({ command: 'fetchChanges' });
   };
 
@@ -348,7 +308,6 @@ const App: React.FC = () => {
   };
 
   const handleNavigateToView = (view: AppState['currentView']) => {
-    console.log(`[Webview App] Navigating to view: ${view}`);
     vscode.postMessage({
       command: 'navigateToView',
       payload: { view: view }
@@ -405,7 +364,6 @@ const App: React.FC = () => {
         model: settingsForm.model,
         maxTokens: settingsForm.maxTokens,
         temperature: settingsForm.temperature
-        // Note: openRouterRefererUrl is saved via VS Code settings, not this button
       }
     });
   };
@@ -420,6 +378,7 @@ const App: React.FC = () => {
       command: 'generateCommitMessage',
       payload: {
         files: appState.currentGroup.files,
+        // groupContext is handled by extension side from stateService.state.currentGroup.specificContext
       }
     });
   };
@@ -485,6 +444,11 @@ const App: React.FC = () => {
                 }
             }
         });
+         // After saving, resync the originalStagedGroupForEdit to the new saved state
+        const updatedGroup = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
+        if (updatedGroup) {
+            setOriginalStagedGroupForEdit({...updatedGroup});
+        }
     }
   };
 
@@ -567,7 +531,7 @@ const App: React.FC = () => {
                   style={{ margin: '0 8px 0 12px' }}
                   aria-label={`Select ${file} for grouping`}
                 />
-                <span className="file-name" style={{ paddingLeft: '4px' }}>{(file.split(/[\\/]/).pop() || file)}</span> {/* Display basename */}
+                <span className="file-name" style={{ paddingLeft: '4px' }}>{(file.split(/[\\/]/).pop() || file)}</span>
                 <div className="file-actions">
                   <button onClick={() => handleViewDiff(file)} title="Open Changes">Diff</button>
                   <button onClick={() => handleRevertFile(file)} title="Discard Changes" className="revert-button">↶</button>
@@ -583,13 +547,16 @@ const App: React.FC = () => {
             Staged Groups ({appState.stagedGroups.length})
         </h2>
         {isCommittingAll && <div className="loading-indicator" style={{paddingLeft: '12px'}}>Processing commits...</div>}
-        {commitFeedback.length > 0 && (
-            <div className="commit-feedback-area">
-                {commitFeedback.map(fb => (
-                    <div key={fb.timestamp} className={`feedback-${fb.type}`}>{(fb.type === 'error' ? '❌ ' : fb.type === 'warning' ? '⚠️ ' : 'ℹ️ ')} {fb.message}</div>
-                ))}
+        
+        {/* Display commit summary or last error */}
+        {!isCommittingAll && (commitSummary || lastCommitError) && (
+            <div 
+                className={`commit-summary ${lastCommitError ? 'feedback-error' : 'feedback-info'}`}
+            >
+                {lastCommitError ? `❌ ${lastCommitError}` : `ℹ️ ${commitSummary}`}
             </div>
         )}
+
         {appState.stagedGroups.length === 0 && !isCommittingAll && (
             <div className="no-changes-message" style={{padding: '8px 12px'}}>No groups are currently staged.</div>
         )}
@@ -668,7 +635,8 @@ const App: React.FC = () => {
             value={appState.currentGroup?.specificContext || ''}
             onChange={(e) => handleUpdateCurrentGroupSpecificContext(e.target.value)}
             placeholder="Context specific to this new group..."
-            style={{ width: '100%', minHeight: '60px', resize: 'vertical', boxSizing: 'border-box' }}
+            className="general-context-textarea" // Re-used style
+            rows={3} // Adjusted rows
           />
         </div>
         <div className="group-section">
@@ -678,7 +646,9 @@ const App: React.FC = () => {
             value={appState.currentGroup?.commitMessage || ''}
             onChange={(e) => handleUpdateCurrentGroupCommitMessage(e.target.value)}
             placeholder="Commit message (will be generated or write manually)..."
-            style={{ width: '100%', minHeight: '80px', resize: 'vertical', boxSizing: 'border-box', marginBottom: '12px' }}
+            className="general-context-textarea" // Re-used style
+            rows={4} // Adjusted rows
+            style={{ marginBottom: '12px' }}
           />
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
@@ -692,7 +662,6 @@ const App: React.FC = () => {
               className="secondary-button"
               onClick={handleStageCurrentGroup}
               disabled={!appState.currentGroup?.commitMessage?.trim() || (appState.currentGroup?.files.length ?? 0) === 0}
-              style={{ fontSize: '13px' }}
             >
               Stage Group
             </button>
@@ -705,11 +674,9 @@ const App: React.FC = () => {
 
   const renderReviewEditStagedGroupView = () => {
     if (!editingStagedGroupData || !appState.currentEditingStagedGroupId) {
-        console.log(`[Webview App] renderReviewEditStagedGroupView: Waiting for data or navigating. currentEditingId: ${appState.currentEditingStagedGroupId}, editingDataPopulated: ${!!editingStagedGroupData}`);
         return <div className="loading-indicator">Loading group details...</div>;
     }
-    const originalGroup = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
-
+    
     const baselineGroupForComparison = originalStagedGroupForEdit;
 
     const hasUnsavedChanges = baselineGroupForComparison && editingStagedGroupData && (
@@ -717,12 +684,6 @@ const App: React.FC = () => {
         editingStagedGroupData.specificContext !== baselineGroupForComparison.specificContext ||
         JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(baselineGroupForComparison.files.slice().sort())
     );
-
-    // const hasUnsavedChanges = originalGroup && editingStagedGroupData && (
-    //     editingStagedGroupData.commitMessage !== originalGroup.commitMessage ||
-    //     editingStagedGroupData.specificContext !== originalGroup.specificContext ||
-    //     JSON.stringify(editingStagedGroupData.files.slice().sort()) !== JSON.stringify(originalGroup.files.slice().sort())
-    // );
 
     return (
         <div className="app-container review-edit-group-view">
@@ -944,7 +905,9 @@ const App: React.FC = () => {
           <textarea id="llm-instructions" value={settingsForm.instructions}
             onChange={(e) => setSettingsForm(prev => ({ ...prev, instructions: e.target.value }))}
             placeholder="Custom instructions (optional, uses default if empty)..."
-            style={{ width: '100%', minHeight: '100px', resize: 'vertical', boxSizing: 'border-box', marginBottom:'8px' }}
+            className="general-context-textarea" // Re-used style
+            rows={5} // Adjusted rows
+            style={{ marginBottom:'8px' }}
           />
            <div className="context-help-text" style={{marginBottom:'8px'}}>
               {appState.settings.instructionsLength > 0 ? `Current: ${appState.settings.instructionsLength} chars` : 'Using default instructions.'}

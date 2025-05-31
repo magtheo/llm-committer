@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { GitService } from './services/GitService';
-import { StateService, AppState, StagedGroup } from './services/StateService'; // Import StagedGroup
+import { StateService, AppState } from './services/StateService'; // Import StagedGroup if needed, not directly here
 import { ConfigurationService } from './services/ConfigurationService';
 import { LLMService } from './services/LLMService';
 
@@ -14,34 +14,58 @@ let configService: ConfigurationService;
 let llmService: LLMService;
 let llmCommitterViewProvider: LLMCommitterViewProvider | undefined; // Store provider instance
 
+// Global variable for the output channel
+let llmCommitterOutputChannel: vscode.OutputChannel;
 
-// --- BEGIN PHASE 7 HELPER ---
-// Helper to show commit progress/results to the user
-function showCommitProgressNotification(message: string, type: 'info' | 'error' | 'warning' = 'info') {
+// New versatile logger function
+function logToOutputAndNotify(
+    message: string,
+    type: 'info' | 'error' | 'warning' | 'debug' = 'info',
+    showPopup: boolean = false
+) {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+
+    if (!llmCommitterOutputChannel) {
+        console.warn("LLM Committer Output Channel not initialized. Message:", logMessage);
+        // Fallback to console if channel not ready (shouldn't happen after activation)
+    }
+
     switch (type) {
         case 'info':
-            vscode.window.showInformationMessage(`LLM Committer: ${message}`);
+        case 'debug':
+            llmCommitterOutputChannel?.appendLine(logMessage);
             break;
         case 'error':
-            vscode.window.showErrorMessage(`LLM Committer: ${message}`);
+            llmCommitterOutputChannel?.appendLine(`ERROR: ${logMessage}`);
+            // llmCommitterOutputChannel?.show(true); // Optionally show channel on errors
             break;
         case 'warning':
-            vscode.window.showWarningMessage(`LLM Committer: ${message}`);
+            llmCommitterOutputChannel?.appendLine(`WARNING: ${logMessage}`);
             break;
     }
-    // Potentially also send a message to webview to display in a dedicated log area
-    if (llmCommitterViewProvider && (llmCommitterViewProvider as any)._view) {
-        (llmCommitterViewProvider as any)._view.webview.postMessage({
-            command: 'commitOperationFeedback',
-            payload: { message, type }
-        });
+
+    if (showPopup) {
+        const prefixedMessage = `LLM Committer: ${message}`;
+        switch (type) {
+            case 'info':
+                vscode.window.showInformationMessage(prefixedMessage);
+                break;
+            case 'error':
+                vscode.window.showErrorMessage(prefixedMessage);
+                break;
+            case 'warning':
+                vscode.window.showWarningMessage(prefixedMessage);
+                break;
+            // 'debug' type doesn't show a popup with this logic
+        }
     }
 }
-// --- END PHASE 7 HELPER ---
+
 
 class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'llmCommitterView';
-    public _view?: vscode.WebviewView; // Made public for easier access from helper
+    public _view?: vscode.WebviewView;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -51,7 +75,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         _token: vscode.CancellationToken,
     ) {
         this._view = webviewView;
-        llmCommitterViewProvider = this; // Store instance
+        llmCommitterViewProvider = this;
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -84,11 +108,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     if (payload && payload.filePath) {
                         const workspaceFolders = vscode.workspace.workspaceFolders;
                         if (workspaceFolders && workspaceFolders.length > 0) {
-                            const workspaceRootUri = workspaceFolders[0].uri; // Assuming primary workspace
-                            // File path from GitService is relative to repo root.
-                            // If workspaceRootUri is not repo root, this needs adjustment or GitService needs to return absolute.
-                            // For now, assume workspaceRootUri is effectively the repo root for path joining.
-                            // A safer way: get repo root from GitService if possible.
+                            const workspaceRootUri = workspaceFolders[0].uri;
                             const fileUri = vscode.Uri.joinPath(workspaceRootUri, payload.filePath);
                             try {
                                 await configService.openFileDiff(fileUri);
@@ -112,10 +132,10 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         if (confirm === "Revert Changes") {
                             try {
                                 await gitService.revertFile(payload.filePath);
-                                vscode.window.showInformationMessage(`Changes to "${path.basename(payload.filePath)}" reverted.`);
+                                logToOutputAndNotify(`Changes to "${path.basename(payload.filePath)}" reverted.`, 'info', true);
                                 await updateChangedFilesAndNotifyState(this._view);
                             } catch (error) {
-                                vscode.window.showErrorMessage(`Failed to revert "${path.basename(payload.filePath)}": ${(error as Error).message}`);
+                                logToOutputAndNotify(`Failed to revert "${path.basename(payload.filePath)}": ${(error as Error).message}`, 'error', true);
                             }
                         }
                     }
@@ -131,7 +151,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     if (payload && payload.selectedFiles && payload.selectedFiles.length > 0) {
                         stateService.startNewGroup(payload.selectedFiles);
                     } else {
-                        vscode.window.showWarningMessage('No files selected for grouping.');
+                        logToOutputAndNotify('No files selected for grouping.', 'warning', true);
                     }
                     return;
 
@@ -139,20 +159,20 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     if (payload && payload.view) {
                         console.log(`[LLM-Committer] Navigating to view: ${payload.view}`);
                         if (payload.view === 'fileselection') {
-                            stateService.clearCurrentGroup(); // Also clears currentEditingStagedGroupId
+                            stateService.clearCurrentGroup();
                         } else {
                             stateService.setCurrentView(payload.view as AppState['currentView']);
                         }
                     }
                     return;
 
-                case 'updateGroupSpecificContext': // For current (new) group
+                case 'updateGroupSpecificContext':
                     if (payload && typeof payload.context === 'string' && stateService.state.currentGroup) {
                         stateService.updateCurrentGroupSpecificContext(payload.context);
                     }
                     return;
 
-                case 'updateGroupCommitMessage': // For current (new) group
+                case 'updateGroupCommitMessage':
                     if (payload && typeof payload.message === 'string' && stateService.state.currentGroup) {
                         stateService.updateCurrentGroupCommitMessage(payload.message);
                     }
@@ -187,9 +207,9 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                                 await configService.setLlmProvider(payload.provider);
                             }
                             await this.updateSettingsState();
-                            vscode.window.showInformationMessage('API key saved successfully.');
+                            logToOutputAndNotify('API key saved successfully.', 'info', true);
                         } catch (error) {
-                            vscode.window.showErrorMessage(`Failed to save API key: ${(error as Error).message}`);
+                            logToOutputAndNotify(`Failed to save API key: ${(error as Error).message}`, 'error', true);
                         }
                     }
                     return;
@@ -198,13 +218,13 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     if (payload && typeof payload.instructions === 'string') {
                         try {
                             await configService.setLlmInstructions(payload.instructions);
-                            if (payload.provider) { // Preserve provider if sent
+                            if (payload.provider) {
                                 await configService.setLlmProvider(payload.provider);
                             }
                             await this.updateSettingsState();
-                            vscode.window.showInformationMessage('LLM instructions saved successfully.');
+                            logToOutputAndNotify('LLM instructions saved successfully.', 'info', true);
                         } catch (error) {
-                            vscode.window.showErrorMessage(`Failed to save LLM instructions: ${(error as Error).message}`);
+                            logToOutputAndNotify(`Failed to save LLM instructions: ${(error as Error).message}`, 'error', true);
                         }
                     }
                     return;
@@ -217,9 +237,9 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                             if (payload.maxTokens) await configService.setMaxTokens(payload.maxTokens);
                             if (payload.temperature !== undefined) await configService.setTemperature(payload.temperature);
                             await this.updateSettingsState();
-                            vscode.window.showInformationMessage('Model settings saved successfully.');
+                            logToOutputAndNotify('Model settings saved successfully.', 'info', true);
                         } catch (error) {
-                            vscode.window.showErrorMessage(`Failed to save settings: ${(error as Error).message}`);
+                            logToOutputAndNotify(`Failed to save settings: ${(error as Error).message}`, 'error', true);
                         }
                     }
                     return;
@@ -228,27 +248,26 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     try {
                         const result = await llmService.testConnection();
                         if (result.success) {
-                            vscode.window.showInformationMessage('✅ API connection successful!');
+                            logToOutputAndNotify('✅ API connection successful!', 'info', true);
                         } else {
-                            vscode.window.showErrorMessage(`❌ API connection failed: ${result.error}`);
+                            logToOutputAndNotify(`❌ API connection failed: ${result.error}`, 'error', true);
                         }
                     } catch (error) {
-                        vscode.window.showErrorMessage(`❌ API connection test failed: ${(error as Error).message}`);
+                        logToOutputAndNotify(`❌ API connection test failed: ${(error as Error).message}`, 'error', true);
                     }
                     return;
 
                 case 'generateCommitMessage':
-                    // This can be for a new group or an existing staged group being edited
                     let filesForLLM: string[] | undefined;
                     let groupContextForLLM: string | undefined;
 
-                    if (stateService.state.currentGroup && payload.files) { // For new group
+                    if (stateService.state.currentGroup && payload.files) {
                         filesForLLM = stateService.state.currentGroup.files;
                         groupContextForLLM = stateService.state.currentGroup.specificContext;
-                    } else if (stateService.state.currentEditingStagedGroupId && payload.stagedGroupId) { // For editing staged group
+                    } else if (stateService.state.currentEditingStagedGroupId && payload.stagedGroupId) {
                         const stagedGroup = stateService.state.stagedGroups.find(g => g.id === payload.stagedGroupId);
                         if (stagedGroup) {
-                            filesForLLM = stagedGroup.files;
+                            filesForLLM = payload.files || stagedGroup.files; // Prefer files from payload if provided for regeneration
                             groupContextForLLM = payload.groupContext !== undefined ? payload.groupContext : stagedGroup.specificContext;
                         }
                     }
@@ -256,22 +275,19 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     if (filesForLLM && groupContextForLLM !== undefined) {
                         await this.handleGenerateCommitMessage(
                             filesForLLM,
-                            stateService.getGeneralContext(), // Always use current general context
+                            stateService.getGeneralContext(),
                             groupContextForLLM,
-                            payload.stagedGroupId // Pass stagedGroupId if generating for existing group
+                            payload.stagedGroupId
                         );
                     } else {
-                        vscode.window.showWarningMessage("Could not determine files or context for message generation.");
+                        logToOutputAndNotify("Could not determine files or context for message generation.", 'warning', true);
                     }
                     return;
 
-                // --- BEGIN PHASE 7 MESSAGE HANDLERS ---
                 case 'stageCurrentGroup':
                     if (stateService.stageCurrentGroup()) {
-                        vscode.window.showInformationMessage('Group staged successfully.');
-                        // StateService.clearCurrentGroup already fires state change and sets view.
+                        logToOutputAndNotify('Group staged successfully.', 'info', false); // Output only, webview state update handles UI
                     }
-                    // Errors handled by StateService via vscode.window.showErrorMessage
                     return;
 
                 case 'commitAllStaged':
@@ -281,7 +297,8 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                 case 'unstageGroup':
                     if (payload && payload.groupId) {
                         stateService.unstageGroup(payload.groupId);
-                        // Message shown by StateService
+                        // User feedback is handled by StateService for this action.
+                        // logToOutputAndNotify(`Group ${payload.groupId} unstaged.`, 'info', false); // Optional additional logging
                     }
                     return;
                 
@@ -290,29 +307,26 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                         const groupExists = stateService.state.stagedGroups.some(g => g.id === payload.groupId);
                         if (groupExists) {
                             stateService.setCurrentEditingStagedGroupId(payload.groupId);
-                            // setCurrentEditingStagedGroupId also sets currentView to 'reviewStagedGroup'
                         } else {
-                            vscode.window.showErrorMessage("Cannot review group: Group not found.");
-                            stateService.setCurrentView('fileselection'); // Fallback
+                            logToOutputAndNotify("Cannot review group: Group not found.", 'error', true);
+                            stateService.setCurrentView('fileselection');
                         }
                     }
                     return;
 
                 case 'updateStagedGroup':
                     if (payload && payload.groupId && payload.updates) {
-                        // Validate updates before passing to state service if necessary
                         stateService.updateStagedGroup(payload.groupId, payload.updates);
-                        vscode.window.showInformationMessage('Staged group updated.');
+                        logToOutputAndNotify('Staged group updated.', 'info', false); // Output only, webview UI indicates changes
                     }
                     return;
 
                 case 'removeFileFromStagedGroup':
+                    // Handled by StateService which may show its own notifications
                     if (payload && payload.groupId && payload.filePath) {
                         stateService.removeFileFromStagedGroup(payload.groupId, payload.filePath);
-                        // Message shown by StateService if group becomes empty
                     }
                     return;
-                // --- END PHASE 7 MESSAGE HANDLERS ---
             }
         });
     }
@@ -321,19 +335,18 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         files: string[],
         generalContext: string,
         groupContext: string,
-        stagedGroupIdForUpdate?: string // Optional: if generating for an existing staged group
+        stagedGroupIdForUpdate?: string
     ): Promise<void> {
         try {
             if (stagedGroupIdForUpdate) {
-                // UI should show its own loading indicator for editing staged group
                 if (this._view) {
                      this._view.webview.postMessage({ command: 'generatingStagedGroupMessage', payload: { groupId: stagedGroupIdForUpdate, isGenerating: true } });
                 }
             } else {
-                 stateService.setGeneratingMessage(true); // For new group
+                 stateService.setGeneratingMessage(true);
             }
 
-
+            logToOutputAndNotify(`Generating commit message for ${files.length} file(s)...`, 'debug');
             const fileDiffs = await gitService.getFileDiffs(files);
             const result = await llmService.generateCommitMessage({
                 generalContext,
@@ -351,15 +364,15 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                 let successMsg = '✅ Commit message generated!';
                 if (result.truncated) successMsg += ' (Note: Some content truncated)';
                 if (result.tokensUsed) successMsg += ` (${result.tokensUsed} tokens)`;
-                vscode.window.showInformationMessage(successMsg);
+                logToOutputAndNotify(successMsg, 'info', true); // Popup for success
 
             } else {
                 const errorMsg = result.error || 'Unknown error during generation';
-                vscode.window.showErrorMessage(`Failed to generate commit message: ${errorMsg}`);
+                logToOutputAndNotify(`Failed to generate commit message: ${errorMsg}`, 'error', true);
             }
 
         } catch (error) {
-            vscode.window.showErrorMessage(`Error generating commit message: ${(error as Error).message}`);
+            logToOutputAndNotify(`Error generating commit message: ${(error as Error).message}`, 'error', true);
         } finally {
             if (stagedGroupIdForUpdate) {
                  if (this._view) {
@@ -371,11 +384,10 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    // --- BEGIN PHASE 7 METHOD ---
     private async handleCommitAllStaged(): Promise<void> {
-        const stagedGroupsToCommit = [...stateService.state.stagedGroups]; // Create a copy
+        const stagedGroupsToCommit = [...stateService.state.stagedGroups];
         if (stagedGroupsToCommit.length === 0) {
-            showCommitProgressNotification('No groups staged for commit.', 'info');
+            logToOutputAndNotify('No groups staged for commit.', 'info', true);
             return;
         }
 
@@ -385,11 +397,11 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
             "Commit All"
         );
         if (confirm !== "Commit All") {
-            showCommitProgressNotification('Commit operation cancelled by user.', 'info');
+            logToOutputAndNotify('Commit operation cancelled by user.', 'info', true);
             return;
         }
 
-        showCommitProgressNotification(`Starting to commit ${stagedGroupsToCommit.length} group(s)...`, 'info');
+        logToOutputAndNotify(`Starting to commit ${stagedGroupsToCommit.length} group(s)...`, 'debug');
         if (this._view) {
             this._view.webview.postMessage({ command: 'commitOperationStart', payload: { totalGroups: stagedGroupsToCommit.length }});
         }
@@ -400,15 +412,15 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         for (const group of stagedGroupsToCommit) {
             const groupIdentifier = `Group for "${group.commitMessage.substring(0, 30)}..."`;
             try {
-                showCommitProgressNotification(`Staging files for ${groupIdentifier}...`, 'info');
+                logToOutputAndNotify(`Staging ${group.files.length} file(s) for ${groupIdentifier}...`, 'debug');
                 await gitService.stageFiles(group.files);
 
-                showCommitProgressNotification(`Committing ${groupIdentifier}...`, 'info');
+                logToOutputAndNotify(`Committing ${groupIdentifier}...`, 'debug');
                 await gitService.commit(group.commitMessage);
 
-                stateService.removeStagedGroupById(group.id); // Remove from state on success
+                stateService.removeStagedGroupById(group.id);
                 successCount++;
-                showCommitProgressNotification(`Successfully committed ${groupIdentifier}.`, 'info');
+                logToOutputAndNotify(`Successfully committed ${groupIdentifier}.`, 'info', true);
                  if (this._view) {
                     this._view.webview.postMessage({ command: 'commitGroupSuccess', payload: { groupId: group.id }});
                 }
@@ -416,32 +428,33 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
             } catch (error) {
                 failureCount++;
                 const errorMessage = (error as Error).message || 'Unknown error';
-                showCommitProgressNotification(`Failed to commit ${groupIdentifier}: ${errorMessage}`, 'error');
+                logToOutputAndNotify(`Failed to commit ${groupIdentifier}: ${errorMessage}`, 'error', true);
                 console.error(`[LLM-Committer] Error committing group ${group.id}:`, error);
-                // Group remains in stagedGroups list in StateService
                  if (this._view) {
                     this._view.webview.postMessage({ command: 'commitGroupFailed', payload: { groupId: group.id, error: errorMessage }});
                 }
             }
         }
+        
+        let finalMessageType: 'info' | 'warning' | 'error' = 'info';
+        if (failureCount > 0 && successCount === 0) finalMessageType = 'error';
+        else if (failureCount > 0) finalMessageType = 'warning';
 
         let finalMessage = `Commit operation finished. ${successCount} succeeded, ${failureCount} failed.`;
-        showCommitProgressNotification(finalMessage, failureCount > 0 ? 'warning' : 'info');
+        logToOutputAndNotify(finalMessage, finalMessageType, true);
+
         if (this._view) {
             this._view.webview.postMessage({ command: 'commitOperationEnd', payload: { successCount, failureCount }});
         }
 
-        // Refresh changed files list after all attempts
         await updateChangedFilesAndNotifyState(this._view);
     }
-    // --- END PHASE 7 METHOD ---
 
     private async initializeUIState(): Promise<void> {
         try {
             const generalContext = await configService.getGeneralContext();
             stateService.setGeneralContext(generalContext);
             await this.updateSettingsState();
-            // stateService.loadStagedGroups(); // Already called in activate via stateService.initialize
             await updateChangedFilesAndNotifyState(this._view);
 
             if (this._view) {
@@ -455,7 +468,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
             if (this._view) {
                 this._view.webview.postMessage({
                     command: 'stateUpdate',
-                    payload: stateService.state // Send current (possibly partial) state
+                    payload: stateService.state
                 });
             }
         }
@@ -470,7 +483,8 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                 model: configService.getLlmModel(),
                 maxTokens: configService.getMaxTokens(),
                 temperature: configService.getTemperature(),
-                instructionsLength: configService.getLlmInstructions().length
+                instructionsLength: configService.getLlmInstructions().length,
+                openRouterRefererUrl: configService.getOpenRouterRefererUrl() // Ensure this is included
             };
             stateService.updateSettings(settings);
         } catch (error) {
@@ -479,46 +493,30 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getWebviewContent(webview: vscode.Webview): string {
-        // const webviewBuildDiskPath = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview');
         const webviewDistPath = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview');
-        const indexPathOnDisk = vscode.Uri.joinPath(webviewDistPath, 'index.html');
         const indexPath = vscode.Uri.joinPath(webviewDistPath, 'index.html');
 
         try {
             let html = fs.readFileSync(indexPath.fsPath, 'utf8');
             html = html.replace(/\${webview.cspSource}/g, webview.cspSource);
     
-            // Regex to find asset paths. Handles:
-            // - href="./assets/..." or src="./assets/..."
-            // - href="assets/..." or src="assets/..." (less common from Vite default)
-            // - href="/assets/..." or src="/assets/..." (common from Vite with base: '/')
             const assetRegex = /(href|src)=["']((?:\.\/|\/)?assets\/[^"']+)["']/g;
     
             html = html.replace(assetRegex, (match, p1Attribute, p2Path) => {
-                // p2Path is the path as it appears in index.html (e.g., "./assets/...", "/assets/...")
                 let assetPathInDist = p2Path;
                 if (assetPathInDist.startsWith('/')) {
-                    // If path starts with '/', it's relative to the Vite root, which is 'webview' source,
-                    // but after build, it's relative to 'dist/webview'. So, remove the leading slash.
                     assetPathInDist = assetPathInDist.substring(1);
                 } else if (assetPathInDist.startsWith('./')) {
-                    // If path starts with './', remove it as joinPath handles it.
                     assetPathInDist = assetPathInDist.substring(2);
                 }
-                // Now assetPathInDist should be like "assets/file.js"
-    
                 const diskPath = vscode.Uri.joinPath(webviewDistPath, assetPathInDist);
                 const webviewUri = webview.asWebviewUri(diskPath);
-                
-                console.log(`[LLM-Committer] Asset Transform: Original Path: ${p2Path} -> Webview URI: ${webviewUri.toString()}`);
                 return `${p1Attribute}="${webviewUri.toString()}"`;
             });
-            
-            // console.log('[LLM-Committer] Final Webview HTML:', html.substring(0, 600)); // For debugging
             return html;
         } catch (e) {
             console.error('[LLM-Committer] Error loading or processing webview HTML:', e);
-            vscode.window.showErrorMessage('Failed to load LLM Committer webview content: ' + (e as Error).message);
+            logToOutputAndNotify('Failed to load LLM Committer webview content: ' + (e as Error).message, 'error', true);
             return `<h1>Error loading webview content</h1><p>${(e as Error).message}</p><p>Please ensure the webview was built correctly (npm run build:webview).</p>`;
         }
     }
@@ -527,7 +525,6 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             await vscode.workspace.saveAll(false);
             await updateChangedFilesAndNotifyState(this._view);
-            // Potentially re-send full state if needed, or webview relies on incremental updates
              this._view.webview.postMessage({
                 command: 'stateUpdate',
                 payload: stateService.state
@@ -543,30 +540,35 @@ async function updateChangedFilesAndNotifyState(view?: vscode.WebviewView) {
     }
     try {
         const files = await gitService.getChangedFiles();
-        stateService.setChangedFiles(files); // This now also handles staged group file validation
-        // StateService.setChangedFiles will fire onStateChanged, so no explicit postMessage here
+        stateService.setChangedFiles(files);
     } catch (error) {
         console.error("[LLM-Committer] Failed to update changed files:", error);
-        vscode.window.showErrorMessage('Error fetching Git changes: ' + (error as Error).message);
-        stateService.setChangedFiles([]); // Ensure state is cleared on error
+        logToOutputAndNotify('Error fetching Git changes: ' + (error as Error).message, 'error', true);
+        stateService.setChangedFiles([]);
     }
 }
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('[LLM-Committer] Extension "llm-committer" is now active!');
 
+    // Create and register the output channel
+    llmCommitterOutputChannel = vscode.window.createOutputChannel("LLM Committer");
+    context.subscriptions.push(llmCommitterOutputChannel);
+    logToOutputAndNotify("LLM Committer extension activated.", "debug");
+
+
     gitService = new GitService();
     stateService = new StateService();
     configService = new ConfigurationService(context);
     llmService = new LLMService(configService);
 
-    stateService.initialize(context); // Initialize StateService with context for persistence
+    stateService.initialize(context);
 
     const provider = new LLMCommitterViewProvider(context.extensionUri);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(LLMCommitterViewProvider.viewType, provider, {
-            webviewOptions: { retainContextWhenHidden: true } // Persist webview state
+            webviewOptions: { retainContextWhenHidden: true }
         })
     );
 
@@ -578,23 +580,17 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(stateChangeSubscription);
 
     const fileWatcher = vscode.workspace.onDidSaveTextDocument(async (document) => {
-        // Only refresh if the saved document is within the workspace
-        // and not, for example, a VS Code settings file.
         if (vscode.workspace.getWorkspaceFolder(document.uri)) {
-            console.log('[LLM-Committer] File saved, refreshing changes list...');
-            if (llmCommitterViewProvider) { // Check if provider is initialized
+            logToOutputAndNotify(`File saved: ${path.basename(document.uri.fsPath)}, refreshing changes.`, 'debug');
+            if (llmCommitterViewProvider) {
                 await llmCommitterViewProvider.refresh();
             }
         }
     });
     context.subscriptions.push(fileWatcher);
     
-    // Watch for changes in .git/index to detect external commits/stages
-    // This is more complex and might require a file system watcher on .git/HEAD or .git/index
-    // For now, manual refresh and save-triggered refresh are primary.
-    // Consider `vscode.workspace.createFileSystemWatcher('**/.git/index')` for Phase 8
-
     const refreshCommand = vscode.commands.registerCommand('llm-committer.refresh', async () => {
+        logToOutputAndNotify("Refresh command triggered.", 'debug');
         if (llmCommitterViewProvider) {
             await llmCommitterViewProvider.refresh();
         }
@@ -602,12 +598,16 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(refreshCommand);
 
     const settingsCommand = vscode.commands.registerCommand('llm-committer.settings', () => {
+        logToOutputAndNotify("Settings command triggered, navigating to settings view.", 'debug');
         stateService.setCurrentView('settings');
     });
     context.subscriptions.push(settingsCommand);
 }
 
 export function deactivate() {
-    console.log('[LLM-Committer] Extension "llm-committer" is now deactivated.');
-    llmCommitterViewProvider = undefined; // Clear the stored provider instance
+    logToOutputAndNotify("LLM Committer extension deactivated.", "debug");
+    llmCommitterViewProvider = undefined;
+    if (llmCommitterOutputChannel) {
+        llmCommitterOutputChannel.dispose();
+    }
 }
