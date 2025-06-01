@@ -477,18 +477,24 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
     private async updateSettingsState(): Promise<void> {
         try {
             const hasApiKey = !!(await configService.getApiKey());
+            const currentInstructions = configService.getLlmInstructions(); // This should include defaults
+            
+            console.log('[Extension] updateSettingsState - Instructions length:', currentInstructions.length);
+            
             const settings = {
                 hasApiKey,
                 provider: configService.getLlmProvider(),
                 model: configService.getLlmModel(),
                 maxTokens: configService.getMaxTokens(),
                 temperature: configService.getTemperature(),
-                instructionsLength: configService.getLlmInstructions().length,
-                openRouterRefererUrl: configService.getOpenRouterRefererUrl() // Ensure this is included
+                instructionsLength: currentInstructions.length, // Use actual length
+                openRouterRefererUrl: configService.getOpenRouterRefererUrl()
             };
+            
+            console.log('[Extension] updateSettingsState - Final settings:', settings);
             stateService.updateSettings(settings);
         } catch (error) {
-            console.error('[LLM-Committer] Error updating settings state:', error);
+            console.error('[Extension] Error updating settings state:', error);
         }
     }
 
