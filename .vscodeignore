@@ -1,11 +1,44 @@
-.vscode/**
-.vscode-test/**
-src/**
-.gitignore
-.yarnrc
+# Development specific tool configurations and VS Code workspace settings
+.vscode/
+.vscode-test.mjs
+eslint.config.mjs
+vite.config.ts
+tsconfig.vite.json
 vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
-**/*.ts
-**/.vscode-test.*
+
+# Source code that is compiled (extension TypeScript and webview sources)
+src/
+webview/ # This excludes all webview sources. Vite builds into dist/webview, which will NOT be ignored.
+
+# Node modules (vsce handles production dependencies appropriately)
+node_modules/
+.pnp/ # Yarn PnP files, if used
+.pnp.js # Yarn PnP loader, if used
+
+# Test files and source maps from the compiled 'out' directory
+out/test/
+out/**/*.map
+
+# Git specific files & directory (repository files)
+.git/
+.github/ # If you have GitHub specific workflows, etc., not needed in the package
+.gitignore
+.gitattributes
+
+# Temporary build files / OS specific files
+*.tsbuildinfo
+.DS_Store
+
+# Previously built .vsix packages
+*.vsix
+
+# Ensure your icon is included if it's in a top-level folder that might otherwise be ignored.
+# If your icon is images/logo.png, and 'images/' is not ignored by other rules, this is not strictly needed.
+# !images/logo.png
+
+# README.md, CHANGELOG.md, and LICENSE are typically included by vsce by default.
+# If you have other markdown files you want to exclude:
+# *.md
+# !README.md
+# !CHANGELOG.md
+# !LICENSE
