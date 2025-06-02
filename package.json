@@ -2,15 +2,42 @@
   "name": "llm-committer",
   "displayName": "LLM-Committer",
   "description": "VSCode extension for generating commit messages using an LLM",
-  "version": "0.0.1",
-  "publisher": "theo-dev",
+  "version": "1.0.0",
+  "publisher": "magtheo", 
+  "license": "SEE LICENSE IN LICENSE", 
+  "icon": "images/llm-committer-logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/magtheo/llm-committer.git" 
+  },
+  "bugs": {
+    "url": "https://github.com/magtheo/llm-committer/issues" 
+  },
+  "homepage": "https://github.com/magtheo/llm-committer#readme",
+  "keywords": [
+    "git",
+    "commit",
+    "llm",
+    "ai",
+    "openai",
+    "anthropic",
+    "gemini",
+    "openrouter",
+    "developer tools",
+    "source control",
+    "commit message generator",
+    "conventional commits"
+  ],
   "engines": {
-    "vscode": "^1.89.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "SCM Providers"
   ],
-  "activationEvents": ["onView:llmCommitterView"],
+  "activationEvents": [
+    "onView:llmCommitterView"
+  ],
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
@@ -27,7 +54,7 @@
         {
           "id": "llm-committer",
           "title": "LLM Committer",
-          "icon": "$(robot)"
+          "icon": "$(robot)" 
         }
       ]
     },
@@ -90,31 +117,36 @@
         "llmCommitter.llmInstructions": {
           "type": "string",
           "default": "",
-          "description": "Custom instructions for the LLM when generating commit messages. Leave empty to use default instructions."
+          "description": "Custom instructions for the LLM when generating commit messages. Leave empty to use default instructions.",
+          "scope": "resource"
         },
         "llmCommitter.llmModel": {
           "type": "string",
           "default": "gpt-4o-mini",
-          "description": "Model to use for generating commit messages. Available models depend on the selected provider."
+          "description": "Model to use for generating commit messages. Available models depend on the selected provider.",
+          "scope": "resource"
         },
         "llmCommitter.maxTokens": {
           "type": "number",
           "default": 4000,
           "minimum": 1000,
           "maximum": 8000,
-          "description": "Maximum number of tokens to use for the entire LLM request."
+          "description": "Maximum number of tokens to use for the entire LLM request.",
+          "scope": "resource"
         },
         "llmCommitter.temperature": {
           "type": "number",
           "default": 0.3,
           "minimum": 0,
           "maximum": 1,
-          "description": "Temperature setting for LLM creativity (0 = consistent, 1 = creative)."
+          "description": "Temperature setting for LLM creativity (0 = consistent, 1 = creative).",
+          "scope": "resource"
         },
         "llmCommitter.openRouterRefererUrl": {
           "type": "string",
           "default": "http://localhost",
-          "description": "HTTP Referer URL to use for OpenRouter API calls (optional, but recommended by OpenRouter)."
+          "description": "HTTP Referer URL to use for OpenRouter API calls (optional, but recommended by OpenRouter). Set your extension ID or website URL here for production.",
+          "scope": "machine-overridable"
         }
       }
     }
@@ -130,6 +162,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^2.27.0", 
     "concurrently": "^9.1.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3",
