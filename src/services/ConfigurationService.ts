@@ -48,10 +48,10 @@ export class ConfigurationService {
         try {
             if (apiKey.trim()) {
                 await this.context.secrets.store(this.SECRET_KEY_API, apiKey.trim());
-                console.log('[ConfigService] API key stored securely');
+                logToOutputAndNotify('API key stored securely.', 'debug', false);
             } else {
                 await this.context.secrets.delete(this.SECRET_KEY_API);
-                console.log('[ConfigService] API key cleared');
+                logToOutputAndNotify('API key cleared.', 'debug', false);
             }
         } catch (error) {
             console.error('[ConfigService] Error storing API key:', error);
@@ -84,15 +84,15 @@ export class ConfigurationService {
     public getLlmProvider(): LLMProvider {
         const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
         const provider = config.get<LLMProvider>('llmProvider');
-        console.log(`[ConfigService] Getting LLM provider: ${provider || 'openai (default)'}`);
+        logToOutputAndNotify('Using LLM provider: ${provider || openai (default)}', 'debug', true);
         return provider || 'openai';
     }
 
     public async setLlmProvider(provider: LLMProvider): Promise<void> {
-        console.log(`[ConfigService] Setting LLM provider to: ${provider}`);
+        logToOutputAndNotify('Setting LLM provider to: ${provider}', 'debug', true);
         const config = vscode.workspace.getConfiguration(this.CONFIG_SECTION);
         await config.update('llmProvider', provider, vscode.ConfigurationTarget.Workspace);
-        console.log(`[ConfigService] LLM provider saved to workspace configuration`);
+        logToOutputAndNotify('LLM provider saved to workspace configuration.', 'debug', true);
     }
 
     // LLM Model Configuration
@@ -406,4 +406,8 @@ Before responding, verify:
             openRouterRefererUrl: this.getOpenRouterRefererUrl()
         };
     }
+}
+
+function logToOutputAndNotify(arg0: string, arg1: string, arg2: boolean) {
+    throw new Error('Function not implemented.');
 }
