@@ -3,15 +3,19 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'fs'; // Ensure fs is imported if used, though not directly in this version
 
 const execAsync = util.promisify(exec);
 
 export interface FileDiff {
     filePath: string;
     content: string;
-    changeType: 'modified' | 'added' | 'deleted' | 'renamed';
+    changeType: FileDiffChangeType; // Use the defined type alias
 }
+
+// Define type alias for changeType to ensure consistency
+export type FileDiffChangeType = 'modified' | 'added' | 'deleted' | 'renamed';
+
 
 // Define a type for the logger function
 type LoggerFunction = (
@@ -35,7 +39,9 @@ export class GitService {
                 const { stdout } = await execAsync('git rev-parse --show-toplevel', { cwd: folderPath });
                 return stdout.trim();
             } catch (error) {
-                this.logger(`Folder ${folderPath} is not a Git repository or git is not found. Error: ${error}`, 'warning');
+                const errorInst = error as Error;
+                this.logger(`Folder ${folderPath} is not a Git repository or git is not found. Error: ${errorInst.message}`, 'warning');
+                console.warn(`[GitService] Folder ${folderPath} not a Git repo:`, errorInst);
                 return undefined;
             }
         }
@@ -45,6 +51,7 @@ export class GitService {
     public async getChangedFiles(): Promise<string[]> {
         const workspaceRoot = await this.getWorkspaceRoot();
         if (!workspaceRoot) {
+            this.logger('No workspace/Git repository root found for getChangedFiles.', 'debug');
             return [];
         }
 
@@ -52,6 +59,7 @@ export class GitService {
             const { stdout, stderr } = await execAsync('git status --porcelain=v1 -uall', { cwd: workspaceRoot });
             if (stderr) {
                 this.logger(`stderr from git status: ${stderr}`, 'warning');
+                console.warn(`[GitService] stderr from git status: ${stderr}`);
             }
             if (!stdout) return [];
 
@@ -73,8 +81,9 @@ export class GitService {
             return files;
 
         } catch (error: any) {
-            this.logger(`Error getting changed files: ${error.message}`, 'error');
-            // User feedback (popup) is handled by the caller in extension.ts
+            const errorInst = error as Error;
+            this.logger(`Error getting changed files: ${errorInst.message}`, 'error', true);
+            console.error('[GitService] Error getting changed files:', errorInst);
             return [];
         }
     }
@@ -82,11 +91,13 @@ export class GitService {
     public async getFileDiff(filePath: string): Promise<FileDiff> {
         const workspaceRoot = await this.getWorkspaceRoot();
         if (!workspaceRoot) {
+            this.logger('No workspace/Git repository found for getFileDiff.', 'error');
             throw new Error('No workspace/Git repository found');
         }
 
         const absoluteFilePath = path.join(workspaceRoot, filePath);
-        this.logger(`Getting diff for: ${filePath} (abs: ${absoluteFilePath})`, 'debug');
+        this.logger(`Getting diff for: ${filePath} (absolute: ${absoluteFilePath})`, 'debug');
+        let determinedChangeType: FileDiffChangeType = 'modified'; // Default
 
         try {
             const { stdout: statusOutput } = await execAsync(
@@ -94,82 +105,64 @@ export class GitService {
                 { cwd: workspaceRoot }
             );
 
-            let changeType: FileDiff['changeType'] = 'modified';
-            let diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`; // Default to diff against HEAD
+            let diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`;
 
             if (statusOutput.trim()) {
                 const statusCode = statusOutput.trim().substring(0, 2);
-                console.log(`[GitService] Status code for ${filePath}: "${statusCode}"`);
+                this.logger(`[GitService] Status code for ${filePath}: "${statusCode}"`, 'debug');
                 
-                if (statusCode.startsWith('??')) { // Untracked file
-                    changeType = 'added';
-                    // For untracked files, diff against /dev/null to get full content
-                    diffCommand = `git diff --no-index --no-ext-diff /dev/null "${filePath.replace(/"/g, '\\"')}"`;
-                } else if (statusCode.startsWith('A ')) { // Added to index (staged)
-                     changeType = 'added';
-                     // Diff for newly added and staged file (content vs empty)
-                     diffCommand = `git diff --staged -- "${filePath.replace(/"/g, '\\"')}"`;
-                } else if (statusCode.startsWith('D')) { // Deleted from working tree (may or may not be staged for deletion)
-                    changeType = 'deleted';
-                     // Diff for deleted file (content vs HEAD)
-                    diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`;
-                } else if (statusCode.startsWith('R')) { // Renamed
-                    changeType = 'renamed';
-                    // Diff for renamed file, usually comparing new path content to old path content in HEAD
-                    diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`;
-                } else { // M, AM, MM etc. (Modified)
-                    changeType = 'modified';
-                     // Default: show full uncommitted change (working tree vs HEAD)
-                     diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`;
-                     // Optionally, distinguish between staged and unstaged modifications:
-                     // if (statusOutput.trim().charAt(0) !== ' ') { // First char is index status (staged change)
-                     //    diffCommand = `git diff --staged -- "${filePath.replace(/"/g, '\\"')}"`;
-                     // } else { // First char is ' ', second is working tree status (unstaged change)
-                     //    diffCommand = `git diff -- "${filePath.replace(/"/g, '\\"')}"`; // Working tree vs Index
-                     // }
-                }
+                if (statusCode.startsWith('??')) { determinedChangeType = 'added'; diffCommand = `git diff --no-index --no-ext-diff /dev/null "${filePath.replace(/"/g, '\\"')}"`; }
+                else if (statusCode.startsWith('A ')) { determinedChangeType = 'added'; diffCommand = `git diff --staged -- "${filePath.replace(/"/g, '\\"')}"`; }
+                else if (statusCode.startsWith('D')) { determinedChangeType = 'deleted'; diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`; }
+                else if (statusCode.startsWith('R')) { determinedChangeType = 'renamed'; diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`; }
+                else { determinedChangeType = 'modified'; diffCommand = `git diff HEAD -- "${filePath.replace(/"/g, '\\"')}"`; }
             }
+            this.logger(`Using diff command for ${filePath}: ${diffCommand}`, 'debug');
 
             const { stdout: diffOutput, stderr } = await execAsync(diffCommand, {
                 cwd: workspaceRoot,
-                maxBuffer: 1024 * 1024 * 5 // Increased buffer to 5MB
+                maxBuffer: 1024 * 1024 * 5
             });
 
-            if (stderr && !stderr.includes('warning:')) { // Ignore common git warnings
+            if (stderr && !stderr.includes('warning:')) {
                 this.logger(`stderr from git diff for "${filePath}": ${stderr}`, 'warning');
+                console.warn(`[GitService] stderr from git diff for "${filePath}": ${stderr}`);
             }
 
-            const cleanedDiff = this.cleanDiffForLLM(diffOutput, filePath, changeType);
-            return { filePath, content: cleanedDiff, changeType };
+            const cleanedDiff = this.cleanDiffForLLM(diffOutput, filePath, determinedChangeType);
+            return { filePath, content: cleanedDiff, changeType: determinedChangeType };
 
         } catch (error: any) {
-            this.logger(`Error getting diff for "${filePath}": ${error.message}`, 'error');
-            // Fallback for cases where the primary diff logic fails (e.g., complex states)
+            const errorInst = error as Error;
+            this.logger(`Error getting diff for "${filePath}": ${errorInst.message}`, 'error');
+            console.error(`[GitService] Error getting diff for "${filePath}":`, errorInst);
             try {
                 this.logger(`Attempting fallback diff for "${filePath}" (git diff -- path)`, 'debug');
                 const { stdout: simpleDiff } = await execAsync(
-                    `git diff -- "${filePath.replace(/"/g, '\\"')}"`, // Diff working tree vs index
+                    `git diff -- "${filePath.replace(/"/g, '\\"')}"`,
                     { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 5 }
                 );
                 const fallbackChangeType = (await this.determineChangeTypeSimple(filePath, workspaceRoot)) || 'modified';
                 return {
                     filePath,
                     content: this.cleanDiffForLLM(simpleDiff, filePath, fallbackChangeType) || `Unable to retrieve diff for ${filePath}`,
-                    changeType: fallbackChangeType
+                    changeType: fallbackChangeType // Explicitly assign here
                 };
             } catch (fallbackError: any) {
-                this.logger(`Fallback diff also failed for "${filePath}": ${fallbackError.message}`, 'error');
+                const fallbackErrorInst = fallbackError as Error;
+                this.logger(`Fallback diff also failed for "${filePath}": ${fallbackErrorInst.message}`, 'error');
+                console.error(`[GitService] Fallback diff also failed for "${filePath}":`, fallbackErrorInst);
+                // If even fallback fails, return with the initially determined or default changeType
                 return {
                     filePath,
-                    content: `New file ${filePath} - File not found on disk`,
-                    changeType
+                    content: `Error retrieving diff for ${filePath}: ${errorInst.message}`, // Main error message
+                    changeType: determinedChangeType // Use the determined type or default if determination failed early
                 };
             }
         }
     }
-
-    // Helper for fallback diff change type
-    private async determineChangeTypeSimple(filePath: string, workspaceRoot: string): Promise<FileDiff['changeType'] | null> {
+    
+    private async determineChangeTypeSimple(filePath: string, workspaceRoot: string): Promise<FileDiffChangeType | null> {
         try {
             const { stdout: statusOutput } = await execAsync(
                 `git status --porcelain=v1 -- "${filePath.replace(/"/g, '\\"')}"`,
@@ -184,7 +177,8 @@ export class GitService {
                 if (statusCode.startsWith('M') || statusOutput.trim().charAt(1) === 'M') return 'modified';
             }
         } catch (e) {
-            this.logger(`Could not determine change type simply for ${filePath}: ${(e as Error).message}`, 'debug');
+            const errorInst = e as Error;
+            this.logger(`Could not determine change type simply for ${filePath}: ${errorInst.message}`, 'debug');
         }
         return null;
     }
@@ -197,18 +191,20 @@ export class GitService {
                 const diff = await this.getFileDiff(filePath);
                 diffs.push(diff);
             } catch (error) {
-                this.logger(`Failed to get diff for ${filePath} during getFileDiffs: ${error}`, 'error');
+                const errorInst = error as Error;
+                this.logger(`Failed to get diff for ${filePath} during getFileDiffs: ${errorInst.message}`, 'error');
+                console.error(`[GitService] Failed to get diff for ${filePath} during getFileDiffs:`, errorInst);
                 diffs.push({
                     filePath,
                     content: `Error: Could not retrieve diff for ${filePath}`,
-                    changeType: 'modified' // Or 'unknown'
+                    changeType: 'modified' // Default changeType on error
                 });
             }
         }
         return diffs;
     }
 
-    private cleanDiffForLLM(rawDiff: string, filePath: string, changeType: FileDiff['changeType']): string {
+    private cleanDiffForLLM(rawDiff: string, filePath: string, changeType: FileDiffChangeType): string {
         if (!rawDiff.trim()) {
             if (changeType === 'added') return `File ${filePath} (added) - Content of new file:\n(Content not displayed if file is binary or very large in this view; LLM should receive actual content diff for new text files)`;
             if (changeType === 'deleted') return `File ${filePath} (deleted) - Content of deleted file:\n(Content not displayed if file was binary or very large in this view)`;
@@ -221,33 +217,22 @@ export class GitService {
         
         for (const line of lines) {
             if (inHeader) {
-                if (line.startsWith('diff --git')) continue;
-                if (line.startsWith('index ')) continue;
-                if (line.startsWith('--- a/')) continue;
-                if (line.startsWith('+++ b/')) continue;
-                if (line.startsWith('new file mode')) continue;
-                if (line.startsWith('deleted file mode')) continue;
-                if (line.startsWith('similarity index')) continue;
-                if (line.startsWith('rename from')) continue;
-                if (line.startsWith('rename to')) continue;
-                if (line.startsWith('binary files')) { // Handle binary files
-                    cleanLines.push(line); // Keep the "binary files differ" line
-                    // Optionally add more info:
-                    // cleanLines.push(`Binary file ${filePath} differs.`);
-                    break; // No further textual diff for binary files
+                if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('--- a/') || line.startsWith('+++ b/') ||
+                    line.startsWith('new file mode') || line.startsWith('deleted file mode') || line.startsWith('similarity index') ||
+                    line.startsWith('rename from') || line.startsWith('rename to')) continue;
+                if (line.startsWith('binary files')) {
+                    cleanLines.push(line);
+                    break;
                 }
-                if (line.startsWith('@@')) {
-                    inHeader = false;
-                }
+                if (line.startsWith('@@')) inHeader = false;
             }
-            // Always push line if not in header or if it's the @@ line (or if it's content after header for non-textual info)
             if (!inHeader || line.startsWith('@@') || (cleanLines.length > 0 && cleanLines[cleanLines.length -1].startsWith('binary files'))) {
                  cleanLines.push(line);
             }
         }
 
         let result = cleanLines.join('\n').trim();
-        const maxLength = 15000; // Max length for a single diff string for the LLM prompt
+        const maxLength = 15000;
         if (result.length > maxLength) {
             const truncated = result.substring(0, maxLength);
             const lastNewline = truncated.lastIndexOf('\n');
@@ -255,13 +240,13 @@ export class GitService {
                      '\n... (diff truncated by GitService due to length)';
             this.logger(`Diff for ${filePath} truncated to ${maxLength} chars.`, 'debug');
         }
-        // Ensure a meaningful header for the LLM
         return `Change type: ${changeType}\nFile: ${filePath}\n---\n${result || `No textual changes for ${filePath} after cleaning.`}\n---`;
     }
 
     public async revertFile(filePath: string): Promise<void> {
         const workspaceRoot = await this.getWorkspaceRoot();
         if (!workspaceRoot) {
+            this.logger('No workspace/folder open to revert file.', 'error', true);
             throw new Error('No workspace/folder open to revert file.');
         }
         this.logger(`Attempting to revert file: "${filePath}" in ${workspaceRoot}`, 'debug');
@@ -271,13 +256,14 @@ export class GitService {
 
             if (stderr && !stderr.includes('Your branch is up to date with')) {
                 this.logger(`stderr from git checkout for "${filePath}": ${stderr}`, 'warning');
+                console.warn(`[GitService] stderr from git checkout for "${filePath}": ${stderr}`);
             }
-            if (stdout) {
-                 this.logger(`stdout from git checkout for "${filePath}": ${stdout}`, 'debug');
-            }
+            if (stdout) this.logger(`stdout from git checkout for "${filePath}": ${stdout}`, 'debug');
             this.logger(`File "${filePath}" revert command executed.`, 'debug');
         } catch (error: any) {
-            this.logger(`Error reverting file "${filePath}": ${error.message}`, 'error');
+            const errorInst = error as Error;
+            this.logger(`Error reverting file "${filePath}": ${errorInst.message}`, 'error', true);
+            console.error(`[GitService] Error reverting file "${filePath}":`, errorInst);
             throw error;
         }
     }
@@ -285,6 +271,7 @@ export class GitService {
     public async stageFiles(filePaths: string[]): Promise<void> {
         const workspaceRoot = await this.getWorkspaceRoot();
         if (!workspaceRoot) {
+            this.logger('No workspace/Git repository found to stage files.', 'error');
             throw new Error('No workspace/Git repository found to stage files.');
         }
         if (!filePaths || filePaths.length === 0) {
@@ -292,25 +279,35 @@ export class GitService {
             return;
         }
         const quotedFilePaths = filePaths.map(fp => `"${fp.replace(/"/g, '\\"')}"`).join(' ');
-        this.logger(`Staging files: ${filePaths.join(', ')}`, 'debug');
+        this.logger(`Staging ${filePaths.length} files: ${filePaths.join(', ')}`, 'debug');
         try {
             const command = `git add -- ${quotedFilePaths}`;
             const { stdout, stderr } = await execAsync(command, { cwd: workspaceRoot });
-            if (stderr) this.logger(`stderr from git add: ${stderr}`, 'warning');
+            if (stderr) {
+                this.logger(`stderr from git add: ${stderr}`, 'warning');
+                console.warn(`[GitService] stderr from git add: ${stderr}`);
+            }
             if (stdout) this.logger(`stdout from git add: ${stdout}`, 'debug');
-            this.logger(`Files staged successfully: ${filePaths.length}`, 'debug');
+            this.logger(`Successfully staged ${filePaths.length} files.`, 'debug');
         } catch (error: any) {
-            this.logger(`Error staging files ${filePaths.join(', ')}: ${error.message}`, 'error');
-            throw new Error(`Failed to stage files: ${error.message || String(error)}. Check file paths and Git status.`);
+            const errorInst = error as Error;
+            this.logger(`Error staging files ${filePaths.join(', ')}: ${errorInst.message}`, 'error');
+            console.error(`[GitService] Error staging files ${filePaths.join(', ')}:`, errorInst);
+            throw new Error(`Failed to stage files: ${errorInst.message}. Check file paths and Git status.`);
         }
     }
 
     public async commit(message: string): Promise<void> {
         const workspaceRoot = await this.getWorkspaceRoot();
-        if (!workspaceRoot) throw new Error('No workspace/Git repository found to commit.');
-        if (!message || !message.trim()) throw new Error('Commit message cannot be empty.');
-
-        this.logger(`Committing with message: "${message.substring(0, 50)}..."`, 'debug');
+        if (!workspaceRoot) {
+            this.logger('No workspace/Git repository found to commit.', 'error');
+            throw new Error('No workspace/Git repository found to commit.');
+        }
+        if (!message || !message.trim()) {
+            this.logger('Commit message cannot be empty.', 'error');
+            throw new Error('Commit message cannot be empty.');
+        }
+        this.logger(`Committing with message (first 50 chars): "${message.substring(0, 50)}..."`, 'debug');
         try {
             const escapedMessage = message.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
             const command = `git commit -m "${escapedMessage}"`;
@@ -319,24 +316,29 @@ export class GitService {
             if (stderr && !stderr.includes("branch is ahead of") && !stderr.includes("nothing to commit, working tree clean") && !stderr.includes("Commits on this branch are protected")) {
                 if (stderr.includes("nothing to commit")) {
                      this.logger(`'git commit' reported nothing to commit. Message: "${message.substring(0,50)}..."`, 'warning');
+                     console.warn(`[GitService] 'git commit' reported nothing to commit (stderr).`);
                      throw new Error(`Nothing to commit. Ensure files were staged correctly.`);
                 }
                 this.logger(`stderr from git commit: ${stderr}`, 'warning');
+                console.warn(`[GitService] stderr from git commit: ${stderr}`);
             }
             if (stdout) {
                 this.logger(`stdout from git commit: ${stdout}`, 'debug');
                  if (stdout.includes("nothing to commit")) {
                     this.logger(`'git commit' (stdout) reported nothing to commit. Message: "${message.substring(0,50)}..."`, 'warning');
+                    console.warn(`[GitService] 'git commit' reported nothing to commit (stdout).`);
                     throw new Error(`Nothing to commit. Ensure files were staged correctly.`);
                 }
             }
             this.logger(`Commit successful: "${message.substring(0, 50)}..."`, 'debug');
         } catch (error: any) {
-            this.logger(`Error committing: ${error.message}`, 'error');
-             if (error.message && error.message.toLowerCase().includes('nothing to commit')) {
+            const errorInst = error as Error;
+            this.logger(`Error committing: ${errorInst.message}`, 'error');
+            console.error(`[GitService] Error committing:`, errorInst);
+             if (errorInst.message.toLowerCase().includes('nothing to commit')) {
                 throw new Error(`Nothing to commit. Files might not have been staged properly or were already committed.`);
             }
-            throw new Error(`Failed to commit: ${error.message || String(error)}`);
+            throw new Error(`Failed to commit: ${errorInst.message}`);
         }
     }
 }
