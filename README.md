@@ -115,23 +115,16 @@ This extension contributes the following settings (accessible via VS Code Settin
 
 ## Known Issues
 
-*   *(List any known issues or limitations here. Be transparent!)*
-*   Example: "Performance may vary for very large diffs or a high number of changed files."
-*   Example: "Some LLM models might be more sensitive to prompt structure than others."
+*   *(List any known issues or limitations here.)*
 
 ## Release Notes
 
 See the [CHANGELOG.md](CHANGELOG.md) file for details on changes in each version.
 
-### 0.0.1 (Initial Release Date)
-
-*   Initial release of LLM-Committer.
-*   Features: ...
-*   ...
-
 ## Contributing
 
-Contributions, issues, and feature requests are welcome! Please check the [issues page]([YOUR_REPOSITORY_URL]/issues) to see if your issue or idea has already been discussed.
+Contributions, issues, and feature requests are welcome! Please check the [issues page]([YOUR_REPOSITORY_URL]/issues) to see if your issue or idea has a
+lready been discussed.
 
 If you'd like to contribute:
 1.  Fork the repository.
