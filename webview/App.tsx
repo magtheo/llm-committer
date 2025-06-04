@@ -40,8 +40,6 @@ interface AppState {
     currentEditingStagedGroupId: string | null;
 }
 
-// Removed CommitOperationFeedback interface as we're changing how feedback is displayed
-
 interface EditingStagedGroupState {
   specificContext: string;
   commitMessage: string;
@@ -82,10 +80,13 @@ const App: React.FC = () => {
     temperature: 0.3
   });
 
-  // State for commit operation summary
   const [isCommittingAll, setIsCommittingAll] = useState(false);
   const [commitSummary, setCommitSummary] = useState<string | null>(null);
   const [lastCommitError, setLastCommitError] = useState<string | null>(null);
+
+  // Local state for new group view textareas to prevent cursor jumps
+  const [newGroupLocalSpecificContext, setNewGroupLocalSpecificContext] = useState('');
+  const [newGroupLocalCommitMessage, setNewGroupLocalCommitMessage] = useState('');
 
   const [editingStagedGroupData, setEditingStagedGroupData] = useState<EditingStagedGroupState | null>(null);
   const [originalStagedGroupForEdit, setOriginalStagedGroupForEdit] = useState<StagedGroup | null>(null);
@@ -121,6 +122,26 @@ const App: React.FC = () => {
       });
     }, 500);
   }, []);
+
+  // Effect to sync local state for new group view with appState.currentGroup
+  // This handles initial load of the group view and updates from LLM generation.
+  useEffect(() => {
+    if (appState.currentView === 'group' && appState.currentGroup) {
+      if (appState.currentGroup.specificContext !== newGroupLocalSpecificContext) {
+        setNewGroupLocalSpecificContext(appState.currentGroup.specificContext);
+      }
+      // Important: Only update local commit message if appState's version is different.
+      // This allows LLM to overwrite, but manual typing shouldn't be overwritten by a stale appState version
+      // that hasn't received the debounced update yet.
+      if ((appState.currentGroup.commitMessage || '') !== newGroupLocalCommitMessage) {
+        setNewGroupLocalCommitMessage(appState.currentGroup.commitMessage || '');
+      }
+    } else if (appState.currentView !== 'group') {
+      // Reset when not in group view or currentGroup is null
+      setNewGroupLocalSpecificContext('');
+      setNewGroupLocalCommitMessage('');
+    }
+  }, [appState.currentView, appState.currentGroup]);
 
   useEffect(() => {
     if (appState.currentView === 'reviewStagedGroup') {
@@ -172,7 +193,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const messageListener = (event: MessageEvent) => {
       const message = event.data;
-      // console.log('[Webview App] Received message:', message.command, message.payload); // Keep for debugging if needed
       switch (message.command) {
         case 'stateUpdate':
           const newSettingsPayload = message.payload.settings
@@ -208,11 +228,10 @@ const App: React.FC = () => {
             }));
           }
           break;
-        // Removed 'commitOperationFeedback' case, as verbose feedback is now in Output Channel
         case 'commitOperationStart':
             setIsCommittingAll(true);
-            setCommitSummary(null); // Clear previous summary
-            setLastCommitError(null); // Clear previous error
+            setCommitSummary(null); 
+            setLastCommitError(null); 
             break;
         case 'commitOperationEnd':
             setIsCommittingAll(false);
@@ -222,11 +241,8 @@ const App: React.FC = () => {
                 setLastCommitError(null);
             } else if (failureCount > 0) {
                 setCommitSummary(`${successCount} succeeded, ${failureCount} failed.`);
-                // Error details are in Output Channel, webview can just note failure.
-                // We could also pass the first error message here if desired.
-                // For now, keeping it simple.
                 setLastCommitError("One or more groups failed to commit. Check Output > LLM Committer for details.");
-            } else if (successCount === 0 && failureCount === 0) { // e.g. cancelled or no groups
+            } else if (successCount === 0 && failureCount === 0) { 
                 setCommitSummary("Commit operation completed or cancelled.");
                 setLastCommitError(null);
             } else {
@@ -234,8 +250,7 @@ const App: React.FC = () => {
                  setLastCommitError(null);
             }
             break;
-        case 'commitGroupFailed': // Individual group failure
-            // This could update lastCommitError if you want the webview to show the latest specific error
+        case 'commitGroupFailed': 
             setLastCommitError(`Error on group: ${message.payload.error || 'Unknown error'}`);
             break;
         case 'generatingStagedGroupMessage':
@@ -266,7 +281,7 @@ const App: React.FC = () => {
 
   const handleRefreshChanges = () => {
     setIsLoadingFiles(true);
-    setCommitSummary(null); // Clear summary on refresh
+    setCommitSummary(null); 
     setLastCommitError(null);
     vscode.postMessage({ command: 'fetchChanges' });
   };
@@ -311,20 +326,6 @@ const App: React.FC = () => {
     vscode.postMessage({
       command: 'navigateToView',
       payload: { view: view }
-    });
-  };
-
-  const handleUpdateCurrentGroupSpecificContext = (context: string) => {
-    vscode.postMessage({
-      command: 'updateGroupSpecificContext',
-      payload: { context: context }
-    });
-  };
-
-  const handleUpdateCurrentGroupCommitMessage = (message: string) => {
-    vscode.postMessage({
-      command: 'updateGroupCommitMessage',
-      payload: { message: message }
     });
   };
 
@@ -378,14 +379,22 @@ const App: React.FC = () => {
       command: 'generateCommitMessage',
       payload: {
         files: appState.currentGroup.files,
-        // groupContext is handled by extension side from stateService.state.currentGroup.specificContext
+        currentGroupSpecificContext: newGroupLocalSpecificContext, // Send current local context
       }
     });
   };
 
   const handleStageCurrentGroup = () => {
-    if (appState.currentGroup && appState.currentGroup.commitMessage?.trim() && appState.currentGroup.files.length > 0) {
-        vscode.postMessage({ command: 'stageCurrentGroup' });
+    // Use local state values for staging
+    if (appState.currentGroup && newGroupLocalCommitMessage.trim() && appState.currentGroup.files.length > 0) {
+        vscode.postMessage({ 
+          command: 'stageCurrentGroup',
+          payload: {
+            commitMessage: newGroupLocalCommitMessage,
+            specificContext: newGroupLocalSpecificContext,
+            // files are already in appState.currentGroup.files in StateService
+          }
+        });
     } else {
         vscode.postMessage({command: 'alert', text: "Commit message and at least one file are required to stage a group."});
     }
@@ -444,10 +453,15 @@ const App: React.FC = () => {
                 }
             }
         });
-         // After saving, resync the originalStagedGroupForEdit to the new saved state
         const updatedGroup = appState.stagedGroups.find(g => g.id === appState.currentEditingStagedGroupId);
         if (updatedGroup) {
-            setOriginalStagedGroupForEdit({...updatedGroup});
+             // After saving, update originalStagedGroupForEdit to reflect the saved state.
+             // This is important for the "unsaved changes" indicator.
+             // We use the local editingStagedGroupData as it's now the "source of truth" for what was saved.
+            setOriginalStagedGroupForEdit({
+                id: appState.currentEditingStagedGroupId,
+                ...editingStagedGroupData
+            });
         }
     }
   };
@@ -548,7 +562,6 @@ const App: React.FC = () => {
         </h2>
         {isCommittingAll && <div className="loading-indicator" style={{paddingLeft: '12px'}}>Processing commits...</div>}
         
-        {/* Display commit summary or last error */}
         {!isCommittingAll && (commitSummary || lastCommitError) && (
             <div 
                 className={`commit-summary ${lastCommitError ? 'feedback-error' : 'feedback-info'}`}
@@ -632,22 +645,29 @@ const App: React.FC = () => {
           <label htmlFor="new-group-context">Group Specific Context</label>
           <textarea
             id="new-group-context"
-            value={appState.currentGroup?.specificContext || ''}
-            onChange={(e) => handleUpdateCurrentGroupSpecificContext(e.target.value)}
+            value={newGroupLocalSpecificContext}
+            onChange={(e) => {
+              setNewGroupLocalSpecificContext(e.target.value);
+            }}
             placeholder="Context specific to this new group..."
-            className="general-context-textarea" // Re-used style
-            rows={3} // Adjusted rows
+            className="general-context-textarea"
+            rows={3}
           />
         </div>
         <div className="group-section">
-          <label htmlFor="new-commit-message">Commit Message</label>
+          <label htmlFor="new-commit-message">
+            Commit Message
+            {appState.currentGroup?.isGenerating && <span className="loading-spinner" style={{marginLeft: '8px'}}>⟳</span>}
+          </label>
           <textarea
             id="new-commit-message"
-            value={appState.currentGroup?.commitMessage || ''}
-            onChange={(e) => handleUpdateCurrentGroupCommitMessage(e.target.value)}
+            value={newGroupLocalCommitMessage}
+            onChange={(e) => {
+              setNewGroupLocalCommitMessage(e.target.value);
+            }}
             placeholder="Commit message (will be generated or write manually)..."
-            className="general-context-textarea" // Re-used style
-            rows={4} // Adjusted rows
+            className="general-context-textarea"
+            rows={4}
             style={{ marginBottom: '12px' }}
           />
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -656,12 +676,12 @@ const App: React.FC = () => {
               onClick={handleGenerateNewGroupMessage}
               disabled={appState.currentGroup?.isGenerating || !appState.settings.hasApiKey || (appState.currentGroup?.files.length ?? 0) === 0}
             >
-              {appState.currentGroup?.isGenerating ? <span className="loading-spinner">⟳ Generating...</span> : '🤖 Generate Message'}
+              {appState.currentGroup?.isGenerating ? <><span className="loading-spinner">⟳</span> Generating...</> : '🤖 Generate Message'}
             </button>
             <button
               className="secondary-button"
               onClick={handleStageCurrentGroup}
-              disabled={!appState.currentGroup?.commitMessage?.trim() || (appState.currentGroup?.files.length ?? 0) === 0}
+              disabled={!newGroupLocalCommitMessage.trim() || (appState.currentGroup?.files.length ?? 0) === 0 || appState.currentGroup?.isGenerating}
             >
               Stage Group
             </button>
@@ -748,7 +768,10 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="group-section">
-                    <label htmlFor="edit-commit-message">Commit Message</label>
+                    <label htmlFor="edit-commit-message">
+                        Commit Message
+                        {editingStagedGroupData.isGeneratingMessage && <span className="loading-spinner" style={{marginLeft: '8px'}}>⟳</span>}
+                    </label>
                     <textarea
                         id="edit-commit-message"
                         value={editingStagedGroupData.commitMessage}
@@ -905,8 +928,8 @@ const App: React.FC = () => {
           <textarea id="llm-instructions" value={settingsForm.instructions}
             onChange={(e) => setSettingsForm(prev => ({ ...prev, instructions: e.target.value }))}
             placeholder="Custom instructions (optional, uses default if empty)..."
-            className="general-context-textarea" // Re-used style
-            rows={5} // Adjusted rows
+            className="general-context-textarea" 
+            rows={5} 
             style={{ marginBottom:'8px' }}
           />
            <div className="context-help-text" style={{marginBottom:'8px'}}>

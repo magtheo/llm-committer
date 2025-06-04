@@ -167,13 +167,13 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     }
                     return;
 
-                case 'updateGroupSpecificContext':
+                case 'updateGroupSpecificContext': // This might be deprecated if local state in webview is primary
                     if (payload && typeof payload.context === 'string' && stateService.state.currentGroup) {
                         stateService.updateCurrentGroupSpecificContext(payload.context);
                     }
                     return;
 
-                case 'updateGroupCommitMessage':
+                case 'updateGroupCommitMessage': // This might be deprecated if local state in webview is primary
                     if (payload && typeof payload.message === 'string' && stateService.state.currentGroup) {
                         stateService.updateCurrentGroupCommitMessage(payload.message);
                     }
@@ -264,10 +264,13 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     let filesForLLM: string[] | undefined;
                     let groupContextForLLM: string | undefined;
 
-                    if (stateService.state.currentGroup && payload.files) {
+                    // For new group generation, use specific context from payload
+                    if (stateService.state.currentGroup && payload.files && payload.currentGroupSpecificContext !== undefined) {
                         filesForLLM = stateService.state.currentGroup.files;
-                        groupContextForLLM = stateService.state.currentGroup.specificContext;
-                    } else if (stateService.state.currentEditingStagedGroupId && payload.stagedGroupId) {
+                        groupContextForLLM = payload.currentGroupSpecificContext;
+                        // The StateService's currentGroup.specificContext will be updated when staging or if user blurs/saves it.
+                        // For generation, we use the immediate context from the webview.
+                    } else if (stateService.state.currentEditingStagedGroupId && payload.stagedGroupId && payload.files) { // For staged group editing
                         const stagedGroup = stateService.state.stagedGroups.find(g => g.id === payload.stagedGroupId);
                         if (stagedGroup) {
                             filesForLLM = payload.files || stagedGroup.files;
@@ -280,7 +283,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                             filesForLLM,
                             stateService.getGeneralContext(),
                             groupContextForLLM,
-                            payload.stagedGroupId
+                            payload.stagedGroupId // Will be undefined for new groups, present for staged groups
                         );
                     } else {
                         logToOutputAndNotify("Could not determine files or context for message generation.", 'warning', true);
@@ -288,8 +291,16 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                     return;
 
                 case 'stageCurrentGroup':
-                    if (stateService.stageCurrentGroup()) {
-                        logToOutputAndNotify('Group staged successfully.', 'info', false);
+                    if (payload && payload.commitMessage && payload.specificContext !== undefined && stateService.state.currentGroup) {
+                        // Update StateService with the latest message and context from the webview before staging
+                        stateService.updateCurrentGroupCommitMessage(payload.commitMessage);
+                        stateService.updateCurrentGroupSpecificContext(payload.specificContext);
+                        
+                        if (stateService.stageCurrentGroup()) {
+                            logToOutputAndNotify('Group staged successfully with latest details.', 'info', false);
+                        }
+                    } else {
+                        logToOutputAndNotify('Stage current group command received without necessary payload (commitMessage, specificContext) or no current group.', 'warning', true);
                     }
                     return;
 
@@ -346,7 +357,7 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
                  stateService.setGeneratingMessage(true);
             }
 
-            logToOutputAndNotify(`Generating commit message for ${files.length} file(s)...`, 'debug');
+            logToOutputAndNotify(`Generating commit message for ${files.length} file(s)... Group Context: "${groupContext.substring(0,50)}..."`, 'debug');
             const fileDiffs = await gitService.getFileDiffs(files);
             const result = await llmService.generateCommitMessage({
                 generalContext,
