@@ -2,7 +2,7 @@
   "name": "llm-committer",
   "displayName": "LLM-Committer",
   "description": "VSCode extension for generating commit messages using an LLM",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "magtheo", 
   "license": "SEE LICENSE IN LICENSE", 
   "icon": "images/llm-committer-logo.png",
