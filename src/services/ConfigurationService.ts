@@ -324,7 +324,8 @@ Before responding, verify:
 3. If multiple files: each file listed separately with its specific changes
 4. All changes use present tense, imperative mood
 5. Changes are specific and actionable
-6. Commit type accurately reflects the most significant change`;
+6. Commit type accurately reflects the most significant change
+7. If multiple files: Make sure all files are listed, and that all the chagnes are included under the file.`;
     }
 
     public async openFileDiff(fileUri: vscode.Uri): Promise<void> {

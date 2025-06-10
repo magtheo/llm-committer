@@ -3,15 +3,15 @@
   "displayName": "LLM-Committer",
   "description": "VSCode extension for generating commit messages using an LLM",
   "version": "1.0.1",
-  "publisher": "magtheo", 
-  "license": "SEE LICENSE IN LICENSE", 
+  "publisher": "magtheo",
+  "license": "SEE LICENSE IN LICENSE",
   "icon": "images/llm-committer-logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/magtheo/llm-committer.git" 
+    "url": "https://github.com/magtheo/llm-committer.git"
   },
   "bugs": {
-    "url": "https://github.com/magtheo/llm-committer/issues" 
+    "url": "https://github.com/magtheo/llm-committer/issues"
   },
   "homepage": "https://github.com/magtheo/llm-committer#readme",
   "keywords": [
@@ -54,7 +54,7 @@
         {
           "id": "llm-committer",
           "title": "LLM Committer",
-          "icon": "$(robot)" 
+          "icon": "$(robot)"
         }
       ]
     },
@@ -162,7 +162,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^2.27.0", 
+    "@vscode/vsce": "^2.27.0",
     "concurrently": "^9.1.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3",
@@ -170,6 +170,7 @@
   },
   "dependencies": {
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "vsce": "^2.15.0"
   }
 }
