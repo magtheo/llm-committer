@@ -213,10 +213,6 @@ export class StateService {
             this._state.currentGroup.isGenerating = isGenerating;
             this.logger(`Current group 'isGenerating' flag set to: ${isGenerating}.`, 'debug');
             this._onStateChanged.fire({ ...this._state });
-        } else if (this._state.currentEditingStagedGroupId) {
-            // This state is now handled in App.tsx for staged groups,
-            // but logging here if the call happens can be useful.
-            this.logger(`'isGenerating' flag update for staged group ${this._state.currentEditingStagedGroupId} (handled by webview UI). New state: ${isGenerating}.`, 'debug');
         }
     }
 

@@ -6,7 +6,24 @@ export interface FileDiff {
     content: string;
 }
 
-export interface GenerateMessageRequest {
+export interface FileSummary {
+    filePath: string;
+    summary: string;
+}
+
+export interface GenerateFileSummaryRequest {
+    filePath: string;
+    diffContent: string;
+    generalContext: string;
+}
+
+export interface GenerateOverallMessageRequest {
+    fileSummaries: FileSummary[];
+    specificContext: string;
+    generalContext: string;
+}
+
+export interface GenerateFileDiffsForSummaryRequest {
     generalContext: string;
     groupContext: string;
     fileDiffs: FileDiff[];
@@ -36,16 +53,43 @@ export class LLMService {
     private readonly ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
     private readonly GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
     private readonly OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-    private readonly MAX_DIFF_LENGTH = 2000; // Max length for individual diffs before internal truncation
+    private readonly MAX_DIFF_LENGTH = 5000; // Max length for individual diffs before internal truncation
 
     constructor(configService: ConfigurationService, logger: LoggerFunction = console.log) {
         this.configService = configService;
         this.logger = logger;
     }
 
-    public async generateCommitMessage(request: GenerateMessageRequest): Promise<GenerateMessageResponse> {
+    public async generateFileSummary(request: GenerateFileSummaryRequest): Promise<GenerateMessageResponse> {
         try {
-            this.logger('Starting commit message generation process.', 'debug');
+            this.logger(`Starting file summary generation for ${request.filePath}.`, 'debug');
+            const settings = await this.configService.getLLMSettings();
+
+            if (!settings.apiKey.trim()) {
+                this.logger('API key not configured for the selected provider.', 'error');
+                return { success: false, error: 'API key not configured. Please set it up in settings.' };
+            }
+
+            let prompt = this.buildFileSummaryPrompt(request, settings.instructions);
+            let tokenInfo = this.estimateTokens(prompt, settings.maxTokens);
+            let wasTruncated = false;
+
+            if (!tokenInfo.withinLimit) {
+                this.logger(`File summary prompt too large (${tokenInfo.estimated}/${tokenInfo.limit}). This should ideally not happen if individual diffs are pre-truncated.`, 'warning');
+            }
+
+            return this.routeApiCall(prompt, settings, wasTruncated, true);
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            this.logger(`Error generating file summary for ${request.filePath}: ${errorMsg}`, 'error', true);
+            console.error(`[LLMService] Error generating file summary for ${request.filePath}:`, error);
+            return { success: false, error: `Failed to generate file summary: ${errorMsg}` };
+        }
+    }
+
+    public async generateOverallCommitMessage(request: GenerateOverallMessageRequest): Promise<GenerateMessageResponse> {
+        try {
+            this.logger('Starting overall commit message generation process.', 'debug');
             const settings = await this.configService.getLLMSettings();
             
             if (!settings.apiKey.trim()) {
@@ -53,51 +97,35 @@ export class LLMService {
                 return { success: false, error: 'API key not configured. Please set it up in settings.' };
             }
 
-            let currentRequest = request;
-            let prompt = this.buildPrompt(currentRequest, settings.instructions);
+            let prompt = this.buildOverallCommitMessagePrompt(request, settings.instructions);
             let tokenInfo = this.estimateTokens(prompt, settings.maxTokens);
-            let wasTruncated = false;
-            
-            if (!tokenInfo.withinLimit) {
-                this.logger(`Token limit exceeded (${tokenInfo.estimated}/${tokenInfo.limit}). Attempting to truncate diffs.`, 'warning');
-                currentRequest = this.truncateRequestDiffs(request); // Truncate individual diffs first
-                prompt = this.buildPrompt(currentRequest, settings.instructions);
-                tokenInfo = this.estimateTokens(prompt, settings.maxTokens);
-                wasTruncated = true; // Mark as truncated even if this first step works
+            let wasTruncated = false; // This flag is now primarily for file summaries, but kept for consistency
 
-                if (!tokenInfo.withinLimit) {
-                    // If still over limit, might need more aggressive truncation or error out
-                    // For now, we'll let the API call proceed and potentially fail if it's too large
-                    // Or we could implement a more complex strategy (e.g., removing less important diffs)
-                    this.logger(`Request still large after diff truncation (${tokenInfo.estimated}/${tokenInfo.limit}). Proceeding, but API might reject.`, 'warning');
-                    // Potentially, we could return an error here if it's still drastically over.
-                    // return { success: false, error: `Request too large (${tokenInfo.estimated} tokens even after truncation). Please reduce context or select fewer files.`};
-                } else {
-                    this.logger('Request size reduced by truncating individual file diffs.', 'debug');
-                }
+            if (!tokenInfo.withinLimit) {
+                this.logger(`Overall commit message prompt too large (${tokenInfo.estimated}/${tokenInfo.limit}). This indicates too many file summaries or very long instructions.`, 'warning');
             }
 
-            return this.routeApiCall(prompt, settings, wasTruncated);
+            return this.routeApiCall(prompt, settings, wasTruncated, false);
 
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            this.logger(`Error generating commit message: ${errorMsg}`, 'error', true); // Show popup for general errors
-            console.error('[LLMService] Error generating commit message:', error); // Keep for dev console stack trace
-            return { success: false, error: `Failed to generate commit message: ${errorMsg}` };
+            this.logger(`Error generating overall commit message: ${errorMsg}`, 'error', true);
+            console.error('[LLMService] Error generating overall commit message:', error);
+            return { success: false, error: `Failed to generate overall commit message: ${errorMsg}` };
         }
     }
 
-    private routeApiCall(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {
+    private routeApiCall(prompt: string, settings: LLMSettings, wasTruncated: boolean, isFileSummary: boolean): Promise<GenerateMessageResponse> {
         this.logger(`Routing API call to provider: ${settings.provider}`, 'debug');
         switch (settings.provider) {
             case 'openai':
-                return this.callOpenAI(prompt, settings, wasTruncated);
+                return this.callOpenAI(prompt, settings, wasTruncated, isFileSummary);
             case 'anthropic':
-                return this.callAnthropic(prompt, settings, wasTruncated);
+                return this.callAnthropic(prompt, settings, wasTruncated, isFileSummary);
             case 'gemini':
-                return this.callGemini(prompt, settings, wasTruncated);
+                return this.callGemini(prompt, settings, wasTruncated, isFileSummary);
             case 'openrouter':
-                return this.callOpenRouter(prompt, settings, wasTruncated);
+                return this.callOpenRouter(prompt, settings, wasTruncated, isFileSummary);
             default:
                 this.logger(`Unknown provider specified: ${settings.provider}`, 'error');
                 console.error(`[LLMService] Unknown provider: ${settings.provider}`); // Keep for dev console
@@ -105,53 +133,57 @@ export class LLMService {
         }
     }
 
-    private buildPrompt(request: GenerateMessageRequest, instructions: string): string {
-        this.logger(`Building prompt. Instructions length: ${instructions.length}, General context: ${request.generalContext ? 'Present' : 'Absent'}, Group context: ${request.groupContext ? 'Present' : 'Absent'}, Diffs: ${request.fileDiffs.length}`, 'debug');
-
+    private buildFileSummaryPrompt(request: GenerateFileSummaryRequest, instructions: string): string {
+        this.logger(`Building file summary prompt for ${request.filePath}.`, 'debug');
         const parts = [instructions, ''];
         if (request.generalContext && request.generalContext.trim()) {
             parts.push(`General Project Context:\n${request.generalContext.trim()}`, '');
         }
-        if (request.groupContext && request.groupContext.trim()) {
-            parts.push(`Specific Context for This Change:\n${request.groupContext.trim()}`, '');
+        parts.push(
+            `Summarize the changes in the following file. Focus on what changed and why, providing enough detail to understand the impact of this file's changes on the overall commit. Aim for 2-4 sentences.`,
+            `--- File: ${request.filePath} ---`,
+            request.diffContent,
+            ''
+        );
+        parts.push(`Detailed summary for ${request.filePath}:`);
+        const finalPrompt = parts.join('\n');
+        this.logger(`Full file summary prompt (length: ${finalPrompt.length}):\n--BEGIN PROMPT--\n${finalPrompt}\n--END PROMPT--`, 'debug');
+        return finalPrompt;
+    }
+
+    private buildOverallCommitMessagePrompt(request: GenerateOverallMessageRequest, instructions: string): string {
+        this.logger(`Building overall commit message prompt.`, 'debug');
+        const parts = [instructions, ''];
+        if (request.generalContext && request.generalContext.trim()) {
+            parts.push(`General Project Context:\n${request.generalContext.trim()}`, '');
         }
-        if (request.fileDiffs.length > 0) {
-            parts.push('Files and Changes:', '');
-            request.fileDiffs.forEach(diff => {
-                // Log individual diff content being added to the prompt
-                this.logger(`Adding diff for ${diff.filePath} to prompt. Content length: ${diff.content.length}`, 'debug');
-                // You can log the first N chars of diff content if needed, but be careful with very large diffs flooding logs.
-                // this.logger(`Diff content (start): ${diff.content.substring(0, 200)}...`, 'debug');
-                parts.push(`--- File: ${diff.filePath} ---`, diff.content, '');
+        if (request.specificContext && request.specificContext.trim()) {
+            parts.push(`Specific Context for This Change:\n${request.specificContext.trim()}`, '');
+        }
+        if (request.fileSummaries.length > 0) {
+            parts.push('Summaries of Changes in Files:', '');
+            request.fileSummaries.forEach(summary => {
+                parts.push(`--- File: ${summary.filePath} ---`, summary.summary, '');
             });
         }
-        parts.push('Based on the above context and changes, generate a single, concise Git commit message:');
-        
+        parts.push('Based on the above context and the *provided summaries for each file*, generate a single, comprehensive Git commit message that accurately reflects *all* changes. Focus on the "what" and "why" of the entire group of changes, integrating insights from all file summaries. The message should be suitable for a Git commit log.');
         const finalPrompt = parts.join('\n');
-    
-        // For very detailed debugging, log the entire prompt:
-        this.logger(
-            `Full prompt being sent to LLM (length: ${finalPrompt.length}):\n--BEGIN PROMPT--\n${finalPrompt}\n--END PROMPT--`,
-            'debug'
-        );
-        // If the prompt is extremely long, the output channel might truncate it.
-        // You can also use console.log for the VS Code Debug Console (when running with F5):
-        // console.log("LLM PROMPT BEING SENT:\n", finalPrompt);
-    
+        this.logger(`Full overall commit message prompt (length: ${finalPrompt.length}):\n--BEGIN PROMPT--\n${finalPrompt}\n--END PROMPT--`, 'debug');
         return finalPrompt;
     }
     
-    private async callOpenAI(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {
+    private async callOpenAI(prompt: string, settings: LLMSettings, wasTruncated: boolean, isFileSummary: boolean): Promise<GenerateMessageResponse> {
+        const maxOutputTokens = isFileSummary ? 100 : Math.min(150, settings.maxTokens);
         const payload = {
             model: settings.model,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: Math.min(150, settings.maxTokens), // Max output tokens for commit message
+            max_tokens: maxOutputTokens,
             temperature: settings.temperature,
             top_p: 1,
             frequency_penalty: 0,
             presence_penalty: 0
         };
-        this.logger(`Calling OpenAI API with model: ${settings.model}`, 'debug');
+        this.logger(`Calling OpenAI API with model: ${settings.model}, max_tokens: ${maxOutputTokens}`, 'debug');
         const response = await fetch(this.OPENAI_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.apiKey}` },
@@ -169,10 +201,11 @@ export class LLMService {
         return { success: true, message, tokensUsed: data.usage?.total_tokens, truncated: wasTruncated };
     }
 
-    private async callAnthropic(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {
+    private async callAnthropic(prompt: string, settings: LLMSettings, wasTruncated: boolean, isFileSummary: boolean): Promise<GenerateMessageResponse> {
+        const maxOutputTokens = isFileSummary ? 100 : Math.min(150, settings.maxTokens);
         const payload = {
             model: settings.model,
-            max_tokens: Math.min(150, settings.maxTokens),
+            max_tokens: maxOutputTokens,
             temperature: settings.temperature,
             messages: [{ role: 'user', content: prompt }]
         };
@@ -194,13 +227,14 @@ export class LLMService {
         return { success: true, message, tokensUsed: data.usage?.input_tokens + data.usage?.output_tokens, truncated: wasTruncated };
     }
 
-    private async callGemini(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {
+    private async callGemini(prompt: string, settings: LLMSettings, wasTruncated: boolean, isFileSummary: boolean): Promise<GenerateMessageResponse> {
+        const maxOutputTokens = isFileSummary ? 100 : Math.min(150, settings.maxTokens);
         const apiUrl = `${this.GEMINI_API_BASE_URL}/${settings.model}:generateContent?key=${settings.apiKey}`;
         const payload = {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
                 temperature: settings.temperature,
-                maxOutputTokens: Math.min(150, settings.maxTokens),
+                maxOutputTokens: maxOutputTokens,
             }
         };
         this.logger(`Calling Gemini API with model: ${settings.model}`, 'debug');
@@ -225,12 +259,13 @@ export class LLMService {
         return { success: true, message, tokensUsed: undefined, truncated: wasTruncated }; // Gemini doesn't return token usage in this basic call
     }
 
-    private async callOpenRouter(prompt: string, settings: LLMSettings, wasTruncated: boolean): Promise<GenerateMessageResponse> {
+    private async callOpenRouter(prompt: string, settings: LLMSettings, wasTruncated: boolean, isFileSummary: boolean): Promise<GenerateMessageResponse> {
+        const maxOutputTokens = isFileSummary ? 100 : Math.min(150, settings.maxTokens);
         const payload = {
             model: settings.model,
             messages: [{ role: 'user', content: prompt }],
             temperature: settings.temperature,
-            max_tokens: Math.min(150, settings.maxTokens),
+            max_tokens: maxOutputTokens,
         };
         this.logger(`Calling OpenRouter API with model: ${settings.model}`, 'debug');
         const headers: HeadersInit = {
@@ -316,7 +351,7 @@ export class LLMService {
         return { estimated, limit: promptLimit, withinLimit, truncationSuggested: !withinLimit };
     }
 
-    private truncateRequestDiffs(request: GenerateMessageRequest): GenerateMessageRequest {
+    private truncateRequestDiffs(request: GenerateFileDiffsForSummaryRequest): GenerateFileDiffsForSummaryRequest {
         this.logger('Attempting to truncate individual file diffs in the request.', 'debug');
         const truncatedDiffs = request.fileDiffs.map(diff => {
             if (diff.content.length > this.MAX_DIFF_LENGTH) {
@@ -431,7 +466,7 @@ export class LLMService {
             return { success: true };
         }
         const errorData = await response.json().catch(() => ({}));
-        return { success: false, error: this.parseOpenAIError(response.status, errorData) }; // OpenRouter uses similar error codes
+        return { success: false, error: this.parseOpenAIError(response.status, errorData) };
     }
 
     public getAvailableModels(provider: LLMProvider): string[] {
