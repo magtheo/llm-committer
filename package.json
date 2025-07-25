@@ -128,7 +128,7 @@
         },
         "llmCommitter.maxTokens": {
           "type": "number",
-          "default": 4000,
+          "default": 8000,
           "minimum": 1000,
           "maximum": 8000,
           "description": "Maximum number of tokens to use for the entire LLM request.",

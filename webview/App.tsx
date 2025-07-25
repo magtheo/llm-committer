@@ -91,6 +91,8 @@ const App: React.FC = () => {
   const [editingStagedGroupData, setEditingStagedGroupData] = useState<EditingStagedGroupState | null>(null);
   const [originalStagedGroupForEdit, setOriginalStagedGroupForEdit] = useState<StagedGroup | null>(null);
 
+  const [generationProgress, setGenerationProgress] = useState<{ message: string; percentage: number } | null>(null);
+
   const getDefaultModelForProvider = (provider: LLMProviderWebview): string => {
     switch (provider) {
         case 'openai': return 'gpt-4o-mini';
@@ -257,6 +259,9 @@ const App: React.FC = () => {
             if (editingStagedGroupData && message.payload.groupId === appState.currentEditingStagedGroupId) {
                 setEditingStagedGroupData(prev => prev ? ({...prev, isGeneratingMessage: message.payload.isGenerating}) : null);
             }
+            break;
+        case 'updateGenerationProgress':
+            setGenerationProgress(message.payload);
             break;
       }
     };
@@ -686,6 +691,14 @@ const App: React.FC = () => {
               Stage Group
             </button>
           </div>
+          {generationProgress && appState.currentView === 'group' && appState.currentGroup?.isGenerating && (
+            <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
+              <div style={{ width: '100%', backgroundColor: 'var(--vscode-editorWidget-background)', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
+                <div style={{ width: `${generationProgress.percentage}%`, backgroundColor: 'var(--vscode-progressBar-background)', height: '100%', transition: 'width 0.3s ease-out' }}></div>
+              </div>
+              <div style={{ marginTop: '4px' }}>{generationProgress.message}</div>
+            </div>
+          )}
           {!appState.settings.hasApiKey && <div className="warning-state" style={{fontSize: '11px', marginTop: '8px'}}>⚠️ API key required - configure in Settings.</div>}
         </div>
       </div>
@@ -813,6 +826,14 @@ const App: React.FC = () => {
                             Unstage Group
                         </button>
                     </div>
+                    {generationProgress && appState.currentView === 'reviewStagedGroup' && editingStagedGroupData.isGeneratingMessage && (
+                        <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
+                            <div style={{ width: '100%', backgroundColor: 'var(--vscode-editorWidget-background)', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
+                                <div style={{ width: `${generationProgress.percentage}%`, backgroundColor: 'var(--vscode-progressBar-background)', height: '100%', transition: 'width 0.3s ease-out' }}></div>
+                            </div>
+                            <div style={{ marginTop: '4px' }}>{generationProgress.message}</div>
+                        </div>
+                    )}
                     {!appState.settings.hasApiKey && editingStagedGroupData.files.length > 0 &&
                         <div className="warning-state" style={{fontSize: '11px', marginTop: '8px'}}>
                             ⚠️ API key required for message regeneration. Configure in Settings.

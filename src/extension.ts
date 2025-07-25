@@ -348,51 +348,97 @@ class LLMCommitterViewProvider implements vscode.WebviewViewProvider {
         groupContext: string,
         stagedGroupIdForUpdate?: string
     ): Promise<void> {
+        let isGeneratingForStagedGroup = !!stagedGroupIdForUpdate;
         try {
-            if (stagedGroupIdForUpdate) {
+            if (isGeneratingForStagedGroup) {
                 if (this._view) {
-                     this._view.webview.postMessage({ command: 'generatingStagedGroupMessage', payload: { groupId: stagedGroupIdForUpdate, isGenerating: true } });
+                    this._view.webview.postMessage({ command: 'generatingStagedGroupMessage', payload: { groupId: stagedGroupIdForUpdate, isGenerating: true } });
                 }
             } else {
-                 stateService.setGeneratingMessage(true);
+                stateService.setGeneratingMessage(true);
             }
 
-            logToOutputAndNotify(`Generating commit message for ${files.length} file(s)... Group Context: "${groupContext.substring(0,50)}..."`, 'debug');
+            logToOutputAndNotify(`Starting commit message generation for ${files.length} file(s)...`, 'debug');
+
+            // Step 1: Get file diffs
             const fileDiffs = await gitService.getFileDiffs(files);
-            const result = await llmService.generateCommitMessage({
-                generalContext,
-                groupContext,
-                fileDiffs
+            if (fileDiffs.length === 0) {
+                logToOutputAndNotify('No file diffs found for selected files.', 'warning', true);
+                return;
+            }
+
+            // Step 2: Generate summaries for each file
+            const fileSummaries: { filePath: string; summary: string }[] = [];
+            let totalTokensUsed = 0;
+
+            for (let i = 0; i < fileDiffs.length; i++) {
+                const diff = fileDiffs[i];
+                logToOutputAndNotify(`Generating summary for file ${i + 1}/${fileDiffs.length}: ${diff.filePath}`, 'debug');
+                if (this._view) {
+                    this._view.webview.postMessage({ command: 'updateGenerationProgress', payload: { message: `Summarizing file ${i + 1} of ${fileDiffs.length}...`, percentage: Math.floor((i / fileDiffs.length) * 50) } });
+                }
+
+                const summaryResult = await llmService.generateFileSummary({
+                    filePath: diff.filePath,
+                    diffContent: diff.content,
+                    generalContext: generalContext
+                });
+
+                if (summaryResult.success && summaryResult.message) {
+                    fileSummaries.push({ filePath: diff.filePath, summary: summaryResult.message });
+                    if (summaryResult.tokensUsed) totalTokensUsed += summaryResult.tokensUsed;
+                } else {
+                    const errorMsg = summaryResult.error || 'Unknown error';
+                    logToOutputAndNotify(`Failed to generate summary for ${diff.filePath}: ${errorMsg}`, 'warning');
+                    // Continue with other files, but note the failure
+                    fileSummaries.push({ filePath: diff.filePath, summary: `Could not summarize changes for ${diff.filePath}.` });
+                }
+            }
+
+            // Step 3: Generate overall commit message from file summaries
+            logToOutputAndNotify('Generating overall commit message from file summaries...', 'debug');
+            if (this._view) {
+                this._view.webview.postMessage({ command: 'updateGenerationProgress', payload: { message: 'Synthesizing final commit message...', percentage: 75 } });
+            }
+
+            const overallMessageResult = await llmService.generateOverallCommitMessage({
+                fileSummaries: fileSummaries,
+                specificContext: groupContext,
+                generalContext: generalContext
             });
 
-            if (result.success && result.message) {
+            if (overallMessageResult.success && overallMessageResult.message) {
                 if (stagedGroupIdForUpdate) {
-                    stateService.updateStagedGroup(stagedGroupIdForUpdate, { commitMessage: result.message });
+                    stateService.updateStagedGroup(stagedGroupIdForUpdate, { commitMessage: overallMessageResult.message });
                 } else {
-                    stateService.updateCurrentGroupCommitMessage(result.message);
+                    stateService.updateCurrentGroupCommitMessage(overallMessageResult.message);
                 }
 
                 let successMsg = '✅ Commit message generated!';
-                if (result.truncated) successMsg += ' (Note: Some content truncated)';
-                if (result.tokensUsed) successMsg += ` (${result.tokensUsed} tokens)`;
+                if (overallMessageResult.truncated) successMsg += ' (Note: Some content truncated)';
+                if (overallMessageResult.tokensUsed) totalTokensUsed += overallMessageResult.tokensUsed;
+                if (totalTokensUsed > 0) successMsg += ` (Total tokens: ${totalTokensUsed})`;
                 logToOutputAndNotify(successMsg, 'info', true);
 
             } else {
-                const errorMsg = result.error || 'Unknown error during generation';
-                logToOutputAndNotify(`Failed to generate commit message: ${errorMsg}`, 'error', true);
+                const errorMsg = overallMessageResult.error || 'Unknown error during overall message generation';
+                logToOutputAndNotify(`Failed to generate overall commit message: ${errorMsg}`, 'error', true);
             }
 
         } catch (error) {
             const errorInst = error as Error;
-            logToOutputAndNotify(`Error generating commit message: ${errorInst.message}`, 'error', true);
+            logToOutputAndNotify(`Error during commit message generation process: ${errorInst.message}`, 'error', true);
             console.error("Error in handleGenerateCommitMessage:", errorInst);
         } finally {
-            if (stagedGroupIdForUpdate) {
-                 if (this._view) {
-                     this._view.webview.postMessage({ command: 'generatingStagedGroupMessage', payload: { groupId: stagedGroupIdForUpdate, isGenerating: false } });
+            if (isGeneratingForStagedGroup) {
+                if (this._view) {
+                    this._view.webview.postMessage({ command: 'generatingStagedGroupMessage', payload: { groupId: stagedGroupIdForUpdate, isGenerating: false } });
                 }
             } else {
                 stateService.setGeneratingMessage(false);
+            }
+            if (this._view) {
+                this._view.webview.postMessage({ command: 'updateGenerationProgress', payload: { message: '', percentage: 100 } }); // Clear progress
             }
         }
     }
