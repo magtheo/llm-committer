@@ -667,7 +667,7 @@ const App: React.FC = () => {
             }}
             placeholder="Commit message (will be generated or write manually)..."
             className="general-context-textarea"
-            rows={4}
+            rows={10}
             style={{ marginBottom: '12px' }}
           />
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -778,7 +778,7 @@ const App: React.FC = () => {
                         onChange={(e) => handleUpdateEditingStagedGroupDataMessage(e.target.value)}
                         placeholder="Edit commit message..."
                         className="general-context-textarea"
-                        rows={4}
+                        rows={10}
                         style={{ marginBottom: '12px' }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>

@@ -286,7 +286,7 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
   border-color: var(--vscode-focusBorder);
 }
 textarea {
-  min-height: 60px;
+  min-height: 180px;
   resize: vertical;
 }
 input::placeholder, textarea::placeholder {
